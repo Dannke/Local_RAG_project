@@ -34,6 +34,10 @@ SUPPORTED_EXTENSIONS = {".pdf", ".docx"}
 
 # ─────────────────────────── Custom CSS ───────────────────────────
 
+# SVG avatars for chat (monochrome)
+_USER_AVATAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b92a8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E"
+_ASSISTANT_AVATAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b92a8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' width='18' height='10' rx='2'/%3E%3Ccircle cx='12' cy='5' r='2'/%3E%3Cpath d='M12 7v4'/%3E%3Cline x1='8' y1='16' x2='8' y2='16'/%3E%3Cline x1='16' y1='16' x2='16' y2='16'/%3E%3C/svg%3E"
+
 CUSTOM_CSS = """
 <style>
 /* ── Global ─────────────────────────────────────── */
@@ -76,6 +80,13 @@ div[data-testid="stMetric"] [data-testid="stMetricValue"] {
     border-radius: 12px !important;
     padding: 12px 16px !important;
     margin-bottom: 8px !important;
+}
+
+/* ── Chat avatars: monochrome ───────────────────── */
+[data-testid="chatAvatarUser"] img,
+[data-testid="chatAvatarAssistant"] img {
+    filter: grayscale(100%) !important;
+    opacity: 0.7 !important;
 }
 
 /* ── File uploader ───────────────────────────────── */
@@ -278,17 +289,17 @@ def _render_sidebar(base_settings: Settings) -> None:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        if st.button("🔄 Применить настройки", use_container_width=True):
+        if st.button("Применить настройки", use_container_width=True):
             st.session_state.chat_session = None
             st.session_state.chat_session_signature = None
             st.success("Настройки применены")
 
-        if st.button("🗑 Очистить чат", use_container_width=True):
+        if st.button("Очистить чат", use_container_width=True):
             st.session_state.messages = []
             st.session_state.last_context = []
             st.rerun()
 
-        if st.button("↩ Сбросить состояние UI", use_container_width=True):
+        if st.button("Сбросить состояние UI", use_container_width=True):
             _reset_ui_state()
             st.rerun()
 
@@ -326,7 +337,7 @@ def _render_status(settings: Settings, raw_data_dir: Path, index_dir: Path) -> N
 # ─────────────────────────── Upload & Index ───────────────────────
 
 def _render_upload_and_index(settings: Settings, raw_data_dir: Path, index_dir: Path) -> None:
-    st.markdown("### 📁 Документы")
+    st.markdown("### Документы")
 
     if st.session_state.notice:
         st.success(st.session_state.notice)
@@ -346,7 +357,7 @@ def _render_upload_and_index(settings: Settings, raw_data_dir: Path, index_dir: 
         files_list = ", ".join(st.session_state.uploaded_files)
         st.markdown(
             f'<div style="font-size:0.82rem;color:#8b92a8;margin:0.4rem 0">'
-            f'📎 Файлы в этой сессии: {files_list}</div>',
+            f'Файлы в этой сессии: {files_list}</div>',
             unsafe_allow_html=True,
         )
 
@@ -368,7 +379,7 @@ def _render_upload_and_index(settings: Settings, raw_data_dir: Path, index_dir: 
         except Exception as exc:
             st.error(f"Ошибка очистки: {exc}")
 
-    if st.button("⚡ Проиндексировать документы", type="primary"):
+    if st.button("Индексировать документы", type="primary"):
         try:
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -466,7 +477,7 @@ def _delete_single_document(path: Path, raw_data_dir: Path, index_dir: Path) -> 
 # ─────────────────────────── Chat ─────────────────────────────────
 
 def _render_chat(settings: Settings, index_dir: Path) -> None:
-    st.markdown("### 💬 Чат")
+    st.markdown("### Чат")
 
     if not _index_exists(index_dir):
         st.info("ℹ️ Сначала загрузите документы и создайте индекс.")
@@ -583,7 +594,7 @@ def _show_llm_error(title: str, exc: Exception) -> None:
 # ─────────────────────────── Sources ──────────────────────────────
 
 def _render_context(results) -> None:
-    st.markdown("### 📚 Источники")
+    st.markdown("### Источники")
     if not results:
         st.markdown(
             '<div style="color:#5a6078;font-size:0.85rem">'
@@ -613,9 +624,9 @@ def _render_context(results) -> None:
             f'</div>'
             f'<div style="display:flex;gap:16px;font-size:0.78rem;color:#8b92a8;'
             f'margin-bottom:8px;">'
-            f'<span>📄 Page: {page}</span>'
-            f'<span>🔗 Chunk: {citation.chunk_index}</span>'
-            f'<span>🎯 Relevance: <b style="color:{score_color}">'
+            f'<span>Page: {page}</span>'
+            f'<span>Chunk: {citation.chunk_index}</span>'
+            f'<span>Relevance: <b style="color:{score_color}">'
             f'{citation.score:.4f}</b></span>'
             f'</div>'
             f'<div style="background:#0e1117;border-radius:6px;padding:8px 12px;'
