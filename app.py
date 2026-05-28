@@ -1,4 +1,4 @@
-"""Streamlit UI for the local RAG project."""
+"""Streamlit UI for the local RAG project — enhanced visual edition."""
 
 from __future__ import annotations
 
@@ -32,69 +32,163 @@ from rag_project.retrieval.citations import build_citations
 SUPPORTED_EXTENSIONS = {".pdf", ".docx"}
 
 
+# ─────────────────────────── Custom CSS ───────────────────────────
+
+CUSTOM_CSS = """
+<style>
+/* ── Global ─────────────────────────────────────── */
+.block-container {
+    padding-top: 1.5rem;
+    padding-bottom: 3rem;
+    max-width: 1100px;
+}
+
+/* Remove Streamlit chrome */
+footer { visibility: hidden; }
+#MainMenu { visibility: hidden; }
+header { visibility: hidden; }
+
+/* ── Metric cards ────────────────────────────────── */
+div[data-testid="stMetric"] {
+    background: linear-gradient(135deg, #1e2433 0%, #1a1f2e 100%);
+    border: 1px solid #2a3040;
+    border-radius: 12px;
+    padding: 14px 18px;
+    transition: border-color 0.2s;
+}
+div[data-testid="stMetric"]:hover {
+    border-color: #7C4DFF;
+}
+div[data-testid="stMetric"] label {
+    color: #8b92a8 !important;
+    font-size: 0.78rem !important;
+    font-weight: 500 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+    font-size: 1.35rem !important;
+    font-weight: 600 !important;
+}
+
+/* ── Chat messages ───────────────────────────────── */
+[data-testid="stChatMessage"] {
+    border-radius: 12px !important;
+    padding: 12px 16px !important;
+    margin-bottom: 8px !important;
+}
+
+/* ── File uploader ───────────────────────────────── */
+[data-testid="stFileUploaderDropzone"] {
+    border: 2px dashed #2a3040 !important;
+    border-radius: 12px !important;
+    background: #151922 !important;
+    transition: border-color 0.2s;
+}
+[data-testid="stFileUploaderDropzone"]:hover {
+    border-color: #7C4DFF !important;
+}
+
+/* ── Buttons ─────────────────────────────────────── */
+.stButton > button {
+    border-radius: 10px !important;
+    font-weight: 500 !important;
+    transition: all 0.2s !important;
+    border: 1px solid #2a3040 !important;
+}
+.stButton > button:hover {
+    border-color: #7C4DFF !important;
+    box-shadow: 0 0 12px rgba(124, 77, 255, 0.19) !important;
+}
+button[data-testid="baseButton-primary"] {
+    background: linear-gradient(135deg, #7C4DFF, #5E35B1) !important;
+    border: none !important;
+}
+
+/* ── Sidebar ─────────────────────────────────────── */
+[data-testid="stSidebar"] {
+    background: #11141b !important;
+    border-right: 1px solid #1e2433 !important;
+}
+
+/* ── Progress bar ────────────────────────────────── */
+[data-testid="stProgressBar"] > div > div {
+    background: linear-gradient(90deg, #7C4DFF, #512DA8) !important;
+    border-radius: 8px !important;
+}
+
+/* ── Alerts ──────────────────────────────────────── */
+[data-testid="stAlert"] {
+    border-radius: 10px !important;
+    border-left-width: 4px !important;
+}
+
+/* ── Spinner ─────────────────────────────────────── */
+.stSpinner > div {
+    border-top-color: #7C4DFF !important;
+}
+
+/* ── Scrollbar ───────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2a3040; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3a4055; }
+
+/* ── Animations ──────────────────────────────────── */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+div[data-testid="stMetric"] {
+    animation: fadeIn 0.3s ease-out;
+}
+</style>
+"""
+
+
+def _inject_css() -> None:
+    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+
+# ─────────────────────────── Main ─────────────────────────────────
+
 def main() -> None:
-    st.set_page_config(page_title="Local RAG", layout="wide")
+    st.set_page_config(page_title="Local RAG", page_icon="🧬", layout="wide")
+    _inject_css()
     _init_state()
 
     base_settings = load_settings()
-    
+
     # Проверка атрибутов для диагностики
     has_use_reranker = hasattr(base_settings, 'use_reranker')
     has_reranker_model = hasattr(base_settings, 'reranker_model')
     has_rerank_candidates = hasattr(base_settings, 'rerank_candidates')
-    
+
     if not (has_use_reranker and has_reranker_model and has_rerank_candidates):
-        import sys
-        print(f"WARNING: Settings объект имеет неполные атрибуты!", file=sys.stderr)
-        print(f"  - use_reranker: {has_use_reranker}", file=sys.stderr)
-        print(f"  - reranker_model: {has_reranker_model}", file=sys.stderr)
-        print(f"  - rerank_candidates: {has_rerank_candidates}", file=sys.stderr)
+        import sys as _sys
+        print("WARNING: Settings объект имеет неполные атрибуты!", file=_sys.stderr)
+        print(f"  - use_reranker: {has_use_reranker}", file=_sys.stderr)
+        print(f"  - reranker_model: {has_reranker_model}", file=_sys.stderr)
+        print(f"  - rerank_candidates: {has_rerank_candidates}", file=_sys.stderr)
 
-    st.title("Local RAG")
-    st.caption("Загрузка документов, FAISS-индексация, reranking и чат с OpenRouter LLM.")
+    # ── Hero header ──
+    st.markdown(
+        """
+        <div style="margin-bottom: 1.5rem;">
+            <h1 style="margin:0; font-size:1.8rem; font-weight:700;">
+                🧬 <span style="background:linear-gradient(135deg,#7C4DFF,#448AF5);
+                -webkit-background-clip:text;-webkit-text-fill-color:transparent;">
+                Local RAG</span>
+            </h1>
+            <p style="color:#8b92a8;margin:0;font-size:0.85rem;">
+                Загрузка документов · FAISS-индексация · Reranking · OpenRouter LLM
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    with st.sidebar:
-        st.header("Настройки")
-        st.session_state.top_k = st.number_input(
-            "Top-K chunks",
-            min_value=1,
-            max_value=20,
-            value=int(st.session_state.top_k),
-            step=1,
-        )
-        st.session_state.max_context_chars = st.number_input(
-            "MAX_CONTEXT_CHARS",
-            min_value=1_000,
-            max_value=50_000,
-            value=int(st.session_state.max_context_chars),
-            step=1_000,
-        )
-        st.session_state.temperature = st.slider(
-            "TEMPERATURE",
-            min_value=0.0,
-            max_value=1.0,
-            value=float(st.session_state.temperature),
-            step=0.05,
-        )
-        use_reranker = getattr(base_settings, 'use_reranker', True)
-        st.caption(f"Reranker: {'on' if use_reranker else 'off'}")
-        if use_reranker:
-            reranker_model = getattr(base_settings, 'reranker_model', 'cross-encoder/mmarco-mMiniLMv2-L12-H384-v1')
-            st.caption(reranker_model)
-
-        if st.button("Применить настройки", use_container_width=True):
-            st.session_state.chat_session = None
-            st.session_state.chat_session_signature = None
-            st.success("Настройки применены")
-
-        if st.button("Очистить чат", use_container_width=True):
-            st.session_state.messages = []
-            st.session_state.last_context = []
-            st.rerun()
-
-        if st.button("Сбросить состояние UI", use_container_width=True):
-            _reset_ui_state()
-            st.rerun()
+    _render_sidebar(base_settings)
 
     settings = _settings_from_state(base_settings)
     raw_data_dir = settings.raw_data_dir
@@ -142,24 +236,98 @@ def _settings_from_state(settings: Settings) -> Settings:
     )
 
 
+# ─────────────────────────── Sidebar ──────────────────────────────
+
+def _render_sidebar(base_settings: Settings) -> None:
+    with st.sidebar:
+        st.markdown(
+            '<h2 style="font-size:1.1rem;margin-bottom:1rem;">⚙️ Настройки</h2>',
+            unsafe_allow_html=True,
+        )
+        st.session_state.top_k = st.number_input(
+            "Top-K chunks",
+            min_value=1, max_value=20,
+            value=int(st.session_state.top_k), step=1,
+        )
+        st.session_state.max_context_chars = st.number_input(
+            "MAX_CONTEXT_CHARS",
+            min_value=1_000, max_value=50_000,
+            value=int(st.session_state.max_context_chars), step=1_000,
+        )
+        st.session_state.temperature = st.slider(
+            "TEMPERATURE",
+            min_value=0.0, max_value=1.0,
+            value=float(st.session_state.temperature), step=0.05,
+        )
+
+        use_reranker = getattr(base_settings, 'use_reranker', True)
+        st.markdown(
+            f'<div style="margin:0.5rem 0;font-size:0.82rem;color:#8b92a8">'
+            f'Reranker: <b>{"ON ✓" if use_reranker else "OFF"}</b></div>',
+            unsafe_allow_html=True,
+        )
+        if use_reranker:
+            reranker_model = getattr(
+                base_settings, 'reranker_model',
+                'cross-encoder/mmarco-mMiniLMv2-L12-H384-v1',
+            )
+            st.markdown(
+                f'<div style="font-size:0.72rem;color:#5a6078;word-break:break-all">'                f'{reranker_model}</div>',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        if st.button("🔄 Применить настройки", use_container_width=True):
+            st.session_state.chat_session = None
+            st.session_state.chat_session_signature = None
+            st.success("Настройки применены")
+
+        if st.button("🗑 Очистить чат", use_container_width=True):
+            st.session_state.messages = []
+            st.session_state.last_context = []
+            st.rerun()
+
+        if st.button("↩ Сбросить состояние UI", use_container_width=True):
+            _reset_ui_state()
+            st.rerun()
+
+
+# ─────────────────────────── Status ───────────────────────────────
+
 def _render_status(settings: Settings, raw_data_dir: Path, index_dir: Path) -> None:
     documents = _list_documents(raw_data_dir)
     index_ready = _index_exists(index_dir)
     st.session_state.index_ready = index_ready
 
-    st.subheader("Статус")
+    st.markdown("### Статус")
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Индекс", "загружен" if index_ready else "не создан")
+    col1.metric("Индекс", "Готов ✓" if index_ready else "Не создан")
     col2.metric("Документы", str(len(documents)))
     col3.metric("LLM model", settings.openrouter_model)
-    col4.metric("Reranker", "on" if getattr(settings, 'use_reranker', True) else "off")
+    reranker_on = getattr(settings, 'use_reranker', True)
+    col4.metric("Reranker", "ON" if reranker_on else "OFF")
 
     if not settings.openrouter_api_key:
-        st.warning("OPENROUTER_API_KEY не найден. Добавьте ключ в .env перед запуском чата.")
+        st.markdown(
+            '<div style="background:rgba(239,83,80,0.09);border-left:4px solid #ef5350;'
+            'padding:10px 16px;border-radius:8px;margin-top:8px;font-size:0.85rem;">'
+            '⚠️ <b>OPENROUTER_API_KEY</b> не найден. Добавьте ключ в <code>.env</code> '
+            'перед запуском чата.</div>',
+            unsafe_allow_html=True,
+        )
 
+    st.markdown(
+        '<hr style="border-color:#1e2433;margin:1.2rem 0">',
+        unsafe_allow_html=True,
+    )
+
+
+# ─────────────────────────── Upload & Index ───────────────────────
 
 def _render_upload_and_index(settings: Settings, raw_data_dir: Path, index_dir: Path) -> None:
-    st.subheader("Документы")
+    st.markdown("### 📁 Документы")
+
     if st.session_state.notice:
         st.success(st.session_state.notice)
         st.session_state.notice = None
@@ -168,18 +336,24 @@ def _render_upload_and_index(settings: Settings, raw_data_dir: Path, index_dir: 
         "Загрузите PDF или DOCX",
         type=["pdf", "docx"],
         accept_multiple_files=True,
+        label_visibility="collapsed",
     )
 
     if uploaded_files:
         _save_uploaded_files(uploaded_files, raw_data_dir)
 
     if st.session_state.uploaded_files:
-        st.caption("Файлы в этой сессии: " + ", ".join(st.session_state.uploaded_files))
+        files_list = ", ".join(st.session_state.uploaded_files)
+        st.markdown(
+            f'<div style="font-size:0.82rem;color:#8b92a8;margin:0.4rem 0">'
+            f'📎 Файлы в этой сессии: {files_list}</div>',
+            unsafe_allow_html=True,
+        )
 
     _render_document_list(raw_data_dir, index_dir)
 
     clear_index = st.checkbox("Также удалить FAISS-индекс", value=True)
-    if st.button("Очистить все загруженные документы"):
+    if st.button("🗑 Очистить все загруженные документы"):
         try:
             removed_documents = _clear_uploaded_documents(raw_data_dir)
             removed_index_files = _clear_index_files(index_dir) if clear_index else 0
@@ -194,18 +368,17 @@ def _render_upload_and_index(settings: Settings, raw_data_dir: Path, index_dir: 
         except Exception as exc:
             st.error(f"Ошибка очистки: {exc}")
 
-    if st.button("Проиндексировать документы", type="primary"):
+    if st.button("⚡ Проиндексировать документы", type="primary"):
         try:
             progress_bar = st.progress(0)
             status_text = st.empty()
-            
+
             def update_progress(stage: str, current: int, total: int) -> None:
                 if total > 0:
-                    progress = current / total
-                    progress_bar.progress(progress, text=f"{stage}: {current}/{total}")
+                    progress_bar.progress(current / total, text=f"{stage}: {current}/{total}")
                 else:
                     status_text.text(stage)
-            
+
             status_text.text("Инициализация индексирования...")
             count = ingest_to_faiss(
                 input_dir=raw_data_dir,
@@ -218,10 +391,15 @@ def _render_upload_and_index(settings: Settings, raw_data_dir: Path, index_dir: 
             st.session_state.index_ready = True
             st.session_state.chat_session = None
             st.session_state.chat_session_signature = None
-            st.success(f"Индекс обновлен. Chunks: {count}")
+            st.success(f"✅ Индекс обновлён. Chunks: {count}")
         except Exception as exc:
             st.session_state.index_ready = False
             st.error(f"Ошибка индексации: {exc}")
+
+    st.markdown(
+        '<hr style="border-color:#1e2433;margin:1.2rem 0">',
+        unsafe_allow_html=True,
+    )
 
 
 def _save_uploaded_files(uploaded_files, raw_data_dir: Path) -> None:
@@ -249,7 +427,11 @@ def _save_uploaded_files(uploaded_files, raw_data_dir: Path) -> None:
 def _render_document_list(raw_data_dir: Path, index_dir: Path) -> None:
     documents = _list_documents(raw_data_dir)
     if not documents:
-        st.caption("Загруженных документов пока нет.")
+        st.markdown(
+            '<div style="color:#5a6078;font-size:0.85rem;padding:0.5rem 0">'
+            '📭 Загруженных документов пока нет.</div>',
+            unsafe_allow_html=True,
+        )
         return
 
     st.markdown("**Загруженные документы**")
@@ -263,7 +445,7 @@ def _render_document_list(raw_data_dir: Path, index_dir: Path) -> None:
             try:
                 _delete_single_document(document_path, raw_data_dir, index_dir)
                 st.session_state.notice = (
-                    f"Документ удален: {relative_path}. "
+                    f"Документ удалён: {relative_path}. "
                     "Индекс сброшен, выполните индексацию заново."
                 )
                 st.rerun()
@@ -281,10 +463,13 @@ def _delete_single_document(path: Path, raw_data_dir: Path, index_dir: Path) -> 
     st.session_state.index_ready = False
 
 
+# ─────────────────────────── Chat ─────────────────────────────────
+
 def _render_chat(settings: Settings, index_dir: Path) -> None:
-    st.subheader("Чат")
+    st.markdown("### 💬 Чат")
+
     if not _index_exists(index_dir):
-        st.info("Сначала загрузите документы и создайте индекс.")
+        st.info("ℹ️ Сначала загрузите документы и создайте индекс.")
         return
 
     for message in st.session_state.messages:
@@ -292,14 +477,18 @@ def _render_chat(settings: Settings, index_dir: Path) -> None:
             st.markdown(message["content"])
 
     with st.form("question_form", clear_on_submit=True):
-        question = st.text_input("Вопрос", placeholder="О чем этот документ?")
-        submitted = st.form_submit_button("Отправить", type="primary")
+        question = st.text_input(
+            "Вопрос",
+            placeholder="Задайте вопрос о документе…",
+            label_visibility="collapsed",
+        )
+        submitted = st.form_submit_button("➤ Отправить", type="primary")
 
     if not submitted:
         _render_context(st.session_state.last_context)
         return
     if not question or not question.strip():
-        st.warning("Введите вопрос перед отправкой.")
+        st.warning("⚠️ Введите вопрос перед отправкой.")
         _render_context(st.session_state.last_context)
         return
 
@@ -325,7 +514,7 @@ def _render_chat(settings: Settings, index_dir: Path) -> None:
         _show_llm_error("Ошибка LLM", exc)
         return
     except FileNotFoundError:
-        st.error("Индекс не найден. Сначала выполните индексацию.")
+        st.error("❌ Индекс не найден. Сначала выполните индексацию.")
         return
     except Exception as exc:
         st.error(f"Ошибка обработки вопроса: {exc}")
@@ -387,27 +576,61 @@ def _chat_session_signature(settings: Settings, index_dir: Path) -> tuple:
 
 
 def _show_llm_error(title: str, exc: Exception) -> None:
-    st.error(f"{title}: {exc}")
+    st.error(f"❌ {title}: {exc}")
     st.session_state.messages.append({"role": "assistant", "content": f"{title}: {exc}"})
 
 
+# ─────────────────────────── Sources ──────────────────────────────
+
 def _render_context(results) -> None:
-    st.subheader("Источники")
+    st.markdown("### 📚 Источники")
     if not results:
-        st.caption("Источники не найдены.")
+        st.markdown(
+            '<div style="color:#5a6078;font-size:0.85rem">'
+            'Источники не найдены.</div>',
+            unsafe_allow_html=True,
+        )
         return
 
     for index, citation in enumerate(build_citations(results), start=1):
         page = citation.page or "n/a"
-        with st.container(border=True):
-            st.markdown(f"**[{citation.label}] {citation.source}**")
-            col_page, col_chunk, col_score = st.columns(3)
-            col_page.caption(f"Page: {page}")
-            col_chunk.caption(f"Chunk: {citation.chunk_index}")
-            col_score.caption(f"Relevance: {citation.score:.4f}")
-            with st.expander("Показать фрагмент", expanded=index == 1):
-                st.write(citation.text)
+        score_bar = min(int(citation.score * 100), 100)
+        if score_bar > 70:
+            score_color = "#66bb6a"
+        elif score_bar > 40:
+            score_color = "#ffa726"
+        else:
+            score_color = "#ef5350"
 
+        st.markdown(
+            f'<div style="background:#1a1f2e;border:1px solid #2a3040;'
+            f'border-radius:10px;padding:14px 18px;margin-bottom:10px;">'
+            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
+            f'<span style="background:rgba(124,77,255,0.13);color:#7C4DFF;'
+            f'font-size:0.75rem;font-weight:600;padding:2px 8px;border-radius:6px;">'
+            f'{citation.label}</span>'
+            f'<span style="font-weight:500;font-size:0.9rem;">{citation.source}</span>'
+            f'</div>'
+            f'<div style="display:flex;gap:16px;font-size:0.78rem;color:#8b92a8;'
+            f'margin-bottom:8px;">'
+            f'<span>📄 Page: {page}</span>'
+            f'<span>🔗 Chunk: {citation.chunk_index}</span>'
+            f'<span>🎯 Relevance: <b style="color:{score_color}">'
+            f'{citation.score:.4f}</b></span>'
+            f'</div>'
+            f'<div style="background:#0e1117;border-radius:6px;padding:8px 12px;'
+            f'font-size:0.82rem;color:#b0b8c8;word-break:break-word;">'
+            f'{citation.text[:300]}{"…" if len(citation.text) > 300 else ""}'
+            f'</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        with st.expander("Показать полный фрагмент"):
+            st.write(citation.text)
+
+
+# ─────────────────────────── Utilities ────────────────────────────
 
 def _list_documents(raw_data_dir: Path) -> list[Path]:
     if not raw_data_dir.exists():
@@ -430,7 +653,6 @@ def _clear_uploaded_documents(raw_data_dir: Path) -> int:
 def _clear_index_files(index_dir: Path) -> int:
     if not index_dir.exists():
         return 0
-
     removed = 0
     for path in (index_dir / "index.faiss", index_dir / "documents.json", index_dir / "manifest.json"):
         if path.exists():
