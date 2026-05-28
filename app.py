@@ -34,10 +34,6 @@ SUPPORTED_EXTENSIONS = {".pdf", ".docx"}
 
 # ─────────────────────────── Custom CSS ───────────────────────────
 
-# SVG avatars for chat (monochrome)
-_USER_AVATAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b92a8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E"
-_ASSISTANT_AVATAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b92a8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' width='18' height='10' rx='2'/%3E%3Ccircle cx='12' cy='5' r='2'/%3E%3Cpath d='M12 7v4'/%3E%3Cline x1='8' y1='16' x2='8' y2='16'/%3E%3Cline x1='16' y1='16' x2='16' y2='16'/%3E%3C/svg%3E"
-
 CUSTOM_CSS = """
 <style>
 /* ── Global ─────────────────────────────────────── */
@@ -87,6 +83,12 @@ div[data-testid="stMetric"] [data-testid="stMetricValue"] {
 [data-testid="chatAvatarAssistant"] img {
     filter: grayscale(100%) !important;
     opacity: 0.7 !important;
+}
+
+/* ── Hide default emoji avatars ─────────────────── */
+[data-testid="chatAvatarUser"] > div,
+[data-testid="chatAvatarAssistant"] > div {
+    background: transparent !important;
 }
 
 /* ── File uploader ───────────────────────────────── */
@@ -161,11 +163,64 @@ def _inject_css() -> None:
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 
+def _inject_avatar_js() -> None:
+    """Replace default emoji chat avatars with monochrome SVG icons."""
+    import json as _json
+    user_svg = "data:image/svg+xml," + _json.dumps(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+        'stroke="#8b92a8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+        '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'
+        '</svg>'
+    )[1:-1]
+    asst_svg = "data:image/svg+xml," + _json.dumps(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+        'stroke="#8b92a8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+        '<rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/>'
+        '<path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/>'
+        '</svg>'
+    )[1:-1]
+
+    js = f"""
+    <script>
+    (function() {{
+        function replaceAvatars() {{
+            // User avatar
+            var userAvatar = document.querySelector('[data-testid="chatAvatarUser"] > div');
+            if (userAvatar && !userAvatar.dataset.replaced) {{
+                userAvatar.style.backgroundImage = "url('{user_svg}')";
+                userAvatar.style.backgroundSize = "20px";
+                userAvatar.style.backgroundRepeat = "no-repeat";
+                userAvatar.style.backgroundPosition = "center";
+                userAvatar.style.fontSize = "0";
+                userAvatar.dataset.replaced = "1";
+            }}
+            // Assistant avatar
+            var asstAvatar = document.querySelector('[data-testid="chatAvatarAssistant"] > div');
+            if (asstAvatar && !asstAvatar.dataset.replaced) {{
+                asstAvatar.style.backgroundImage = "url('{asst_svg}')";
+                asstAvatar.style.backgroundSize = "20px";
+                asstAvatar.style.backgroundRepeat = "no-repeat";
+                asstAvatar.style.backgroundPosition = "center";
+                asstAvatar.style.fontSize = "0";
+                asstAvatar.dataset.replaced = "1";
+            }}
+        }}
+        // Run now and on DOM mutations
+        replaceAvatars();
+        var observer = new MutationObserver(replaceAvatars);
+        observer.observe(document.body, {{ childList: true, subtree: true }});
+    }})();
+    </script>
+    """
+    st.components.v1.html(js, height=0)
+
+
 # ─────────────────────────── Main ─────────────────────────────────
 
 def main() -> None:
     st.set_page_config(page_title="Local RAG", page_icon="🧬", layout="wide")
     _inject_css()
+    _inject_avatar_js()
     _init_state()
 
     base_settings = load_settings()
