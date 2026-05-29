@@ -139,10 +139,19 @@ def extract_docx_text(path: str | Path) -> str:
     try:
         from docx import Document as DocxDocument
     except ImportError as exc:
-        raise RuntimeError(
-            "Install python-docx to load DOCX files: python -m pip install python-docx"
-        ) from exc
+        # Provide more helpful error message with debugging info
+        import sys
+        error_msg = (
+            f"Failed to import python-docx. "
+            f"Install it with: python -m pip install python-docx\n"
+            f"Python: {sys.executable}\n"
+            f"Error: {exc}"
+        )
+        raise RuntimeError(error_msg) from exc
 
-    doc = DocxDocument(str(file_path))
-    paragraphs = [paragraph.text.strip() for paragraph in doc.paragraphs if paragraph.text.strip()]
-    return "\n\n".join(paragraphs)
+    try:
+        doc = DocxDocument(str(file_path))
+        paragraphs = [paragraph.text.strip() for paragraph in doc.paragraphs if paragraph.text.strip()]
+        return "\n\n".join(paragraphs)
+    except Exception as e:
+        raise RuntimeError(f"Error processing DOCX file {file_path}: {e}") from e

@@ -30,197 +30,45 @@ from rag_project.pipelines.ingest_pipeline import ingest_to_faiss
 from rag_project.retrieval.citations import build_citations
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx"}
+BASE_DIR = Path(__file__).parent
+STYLE_PATH = BASE_DIR / "assets" / "styles.css"
 
-
-# ─────────────────────────── Custom CSS ───────────────────────────
-
-CUSTOM_CSS = """
-<style>
-/* ── Global ─────────────────────────────────────── */
-.block-container {
-    padding-top: 1.5rem;
-    padding-bottom: 3rem;
-    max-width: 1100px;
-}
-
-/* Remove Streamlit chrome */
-footer { visibility: hidden; }
-#MainMenu { visibility: hidden; }
-header { visibility: hidden; }
-
-/* ── Metric cards ────────────────────────────────── */
-div[data-testid="stMetric"] {
-    background: linear-gradient(135deg, #1e2433 0%, #1a1f2e 100%);
-    border: 1px solid #2a3040;
-    border-radius: 12px;
-    padding: 14px 18px;
-    transition: border-color 0.2s;
-}
-div[data-testid="stMetric"]:hover {
-    border-color: #7C4DFF;
-}
-div[data-testid="stMetric"] label {
-    color: #8b92a8 !important;
-    font-size: 0.78rem !important;
-    font-weight: 500 !important;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-    font-size: 1.35rem !important;
-    font-weight: 600 !important;
-}
-
-/* ── Chat messages ───────────────────────────────── */
-[data-testid="stChatMessage"] {
-    border-radius: 12px !important;
-    padding: 12px 16px !important;
-    margin-bottom: 8px !important;
-}
-
-/* ── Chat avatars: monochrome ───────────────────── */
-[data-testid="chatAvatarUser"] img,
-[data-testid="chatAvatarAssistant"] img {
-    filter: grayscale(100%) !important;
-    opacity: 0.7 !important;
-}
-
-/* ── Hide default emoji avatars ─────────────────── */
-[data-testid="chatAvatarUser"] > div,
-[data-testid="chatAvatarAssistant"] > div {
-    background: transparent !important;
-}
-
-/* ── File uploader ───────────────────────────────── */
-[data-testid="stFileUploaderDropzone"] {
-    border: 2px dashed #2a3040 !important;
-    border-radius: 12px !important;
-    background: #151922 !important;
-    transition: border-color 0.2s;
-}
-[data-testid="stFileUploaderDropzone"]:hover {
-    border-color: #7C4DFF !important;
-}
-
-/* ── Buttons ─────────────────────────────────────── */
-.stButton > button {
-    border-radius: 10px !important;
-    font-weight: 500 !important;
-    transition: all 0.2s !important;
-    border: 1px solid #2a3040 !important;
-}
-.stButton > button:hover {
-    border-color: #7C4DFF !important;
-    box-shadow: 0 0 12px rgba(124, 77, 255, 0.19) !important;
-}
-button[data-testid="baseButton-primary"] {
-    background: linear-gradient(135deg, #7C4DFF, #5E35B1) !important;
-    border: none !important;
-}
-
-/* ── Sidebar ─────────────────────────────────────── */
-[data-testid="stSidebar"] {
-    background: #11141b !important;
-    border-right: 1px solid #1e2433 !important;
-}
-
-/* ── Progress bar ────────────────────────────────── */
-[data-testid="stProgressBar"] > div > div {
-    background: linear-gradient(90deg, #7C4DFF, #512DA8) !important;
-    border-radius: 8px !important;
-}
-
-/* ── Alerts ──────────────────────────────────────── */
-[data-testid="stAlert"] {
-    border-radius: 10px !important;
-    border-left-width: 4px !important;
-}
-
-/* ── Spinner ─────────────────────────────────────── */
-.stSpinner > div {
-    border-top-color: #7C4DFF !important;
-}
-
-/* ── Scrollbar ───────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #2a3040; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #3a4055; }
-
-/* ── Animations ──────────────────────────────────── */
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-div[data-testid="stMetric"] {
-    animation: fadeIn 0.3s ease-out;
-}
-</style>
-"""
+_USER_AVATAR = (
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' "
+    "viewBox='0 0 24 24' fill='none' stroke='%23d9d9d9' stroke-width='1.7' "
+    "stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 "
+    "4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E"
+)
+_ASSISTANT_AVATAR = (
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' "
+    "viewBox='0 0 24 24' fill='none' stroke='%23d9d9d9' stroke-width='1.7' "
+    "stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' "
+    "width='18' height='10' rx='2'/%3E%3Ccircle cx='12' cy='5' r='2'/%3E%3Cpath "
+    "d='M12 7v4'/%3E%3Cpath d='M8 16h.01'/%3E%3Cpath d='M16 16h.01'/%3E%3C/svg%3E"
+)
 
 
 def _inject_css() -> None:
-    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+    css = STYLE_PATH.read_text(encoding="utf-8")
+    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
 
-def _inject_avatar_js() -> None:
-    """Replace default emoji chat avatars with monochrome SVG icons."""
-    import json as _json
-    user_svg = "data:image/svg+xml," + _json.dumps(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
-        'stroke="#8b92a8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
-        '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'
-        '</svg>'
-    )[1:-1]
-    asst_svg = "data:image/svg+xml," + _json.dumps(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
-        'stroke="#8b92a8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
-        '<rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/>'
-        '<path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/>'
-        '</svg>'
-    )[1:-1]
-
-    js = f"""
-    <script>
-    (function() {{
-        function replaceAvatars() {{
-            // User avatar
-            var userAvatar = document.querySelector('[data-testid="chatAvatarUser"] > div');
-            if (userAvatar && !userAvatar.dataset.replaced) {{
-                userAvatar.style.backgroundImage = "url('{user_svg}')";
-                userAvatar.style.backgroundSize = "20px";
-                userAvatar.style.backgroundRepeat = "no-repeat";
-                userAvatar.style.backgroundPosition = "center";
-                userAvatar.style.fontSize = "0";
-                userAvatar.dataset.replaced = "1";
-            }}
-            // Assistant avatar
-            var asstAvatar = document.querySelector('[data-testid="chatAvatarAssistant"] > div');
-            if (asstAvatar && !asstAvatar.dataset.replaced) {{
-                asstAvatar.style.backgroundImage = "url('{asst_svg}')";
-                asstAvatar.style.backgroundSize = "20px";
-                asstAvatar.style.backgroundRepeat = "no-repeat";
-                asstAvatar.style.backgroundPosition = "center";
-                asstAvatar.style.fontSize = "0";
-                asstAvatar.dataset.replaced = "1";
-            }}
-        }}
-        // Run now and on DOM mutations
-        replaceAvatars();
-        var observer = new MutationObserver(replaceAvatars);
-        observer.observe(document.body, {{ childList: true, subtree: true }});
-    }})();
-    </script>
-    """
-    st.components.v1.html(js, height=0)
+def _chat_avatar(role: str) -> str:
+    if role == "user":
+        return _USER_AVATAR
+    return _ASSISTANT_AVATAR
 
 
 # ─────────────────────────── Main ─────────────────────────────────
 
 def main() -> None:
-    st.set_page_config(page_title="Local RAG", page_icon="🧬", layout="wide")
+    st.set_page_config(
+        page_title="Local RAG",
+        page_icon="🧬",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
     _inject_css()
-    _inject_avatar_js()
     _init_state()
 
     base_settings = load_settings()
@@ -457,7 +305,7 @@ def _render_upload_and_index(settings: Settings, raw_data_dir: Path, index_dir: 
             st.session_state.index_ready = True
             st.session_state.chat_session = None
             st.session_state.chat_session_signature = None
-            st.success(f"✅ Индекс обновлён. Chunks: {count}")
+            st.success(f"Индекс обновлён. Chunks: {count}")
         except Exception as exc:
             st.session_state.index_ready = False
             st.error(f"Ошибка индексации: {exc}")
@@ -495,7 +343,7 @@ def _render_document_list(raw_data_dir: Path, index_dir: Path) -> None:
     if not documents:
         st.markdown(
             '<div style="color:#5a6078;font-size:0.85rem;padding:0.5rem 0">'
-            '📭 Загруженных документов пока нет.</div>',
+            'Загруженных документов пока нет.</div>',
             unsafe_allow_html=True,
         )
         return
@@ -539,7 +387,7 @@ def _render_chat(settings: Settings, index_dir: Path) -> None:
         return
 
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
+        with st.chat_message(message["role"], avatar=_chat_avatar(message["role"])):
             st.markdown(message["content"])
 
     with st.form("question_form", clear_on_submit=True):
@@ -560,7 +408,7 @@ def _render_chat(settings: Settings, index_dir: Path) -> None:
 
     question = question.strip()
     st.session_state.messages.append({"role": "user", "content": question})
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar=_USER_AVATAR):
         st.markdown(question)
 
     try:
@@ -580,7 +428,7 @@ def _render_chat(settings: Settings, index_dir: Path) -> None:
         _show_llm_error("Ошибка LLM", exc)
         return
     except FileNotFoundError:
-        st.error("❌ Индекс не найден. Сначала выполните индексацию.")
+        st.error("Индекс не найден. Сначала выполните индексацию.")
         return
     except Exception as exc:
         st.error(f"Ошибка обработки вопроса: {exc}")
@@ -588,7 +436,7 @@ def _render_chat(settings: Settings, index_dir: Path) -> None:
 
     st.session_state.last_context = response.results
 
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=_ASSISTANT_AVATAR):
         answer_box = st.empty()
         answer_box.markdown("печатает...")
         answer = ""
