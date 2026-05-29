@@ -18,6 +18,20 @@ import streamlit as st
 # Add src directory to Python path for development
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
+from rag_project.chat_store import (
+    ChatMeta,
+    chats_root,
+    create_chat,
+    delete_chat,
+    ensure_chat_layout,
+    get_chat_documents_dir,
+    get_chat_index_dir,
+    initialize_chats,
+    list_chats,
+    load_messages,
+    rename_chat,
+    save_messages,
+)
 from rag_project.config import Settings, load_settings
 from rag_project.llm.llm_client import (
     InvalidModelError,
@@ -29,7 +43,7 @@ from rag_project.pipelines.chat_pipeline import ChatSession
 from rag_project.pipelines.ingest_pipeline import ingest_to_faiss
 from rag_project.retrieval.citations import build_citations
 
-SUPPORTED_EXTENSIONS = {".pdf", ".docx"}
+SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 BASE_DIR = Path(__file__).parent
 STYLE_PATH = BASE_DIR / "assets" / "styles.css"
 
@@ -102,15 +116,19 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    _render_sidebar(base_settings)
+    chat_root = chats_root(base_settings.project_root)
+    chats = initialize_chats(chat_root)
+    active_chat = _sync_active_chat(chat_root, chats)
+
+    _render_sidebar(base_settings, chat_root, chats, active_chat)
 
     settings = _settings_from_state(base_settings)
-    raw_data_dir = settings.raw_data_dir
-    index_dir = settings.vector_store_dir
+    raw_data_dir = get_chat_documents_dir(active_chat.path)
+    index_dir = get_chat_index_dir(active_chat.path)
 
-    _render_status(settings, raw_data_dir, index_dir)
-    _render_upload_and_index(settings, raw_data_dir, index_dir)
-    _render_chat(settings, index_dir)
+    _render_status(settings, raw_data_dir, index_dir, active_chat)
+    _render_upload_and_index(settings, raw_data_dir, index_dir, active_chat)
+    _render_chat(settings, index_dir, active_chat)
 
 
 def _init_state() -> None:
@@ -123,6 +141,10 @@ def _init_state() -> None:
         "chat_session": None,
         "chat_session_signature": None,
         "notice": None,
+        "active_chat_id": None,
+        "loaded_chat_id": None,
+        "delete_chat_id": None,
+        "uploader_versions": {},
         "top_k": settings.top_k,
         "max_context_chars": settings.max_context_chars,
         "temperature": settings.temperature,
@@ -141,6 +163,27 @@ def _reset_ui_state() -> None:
     st.session_state.notice = None
 
 
+def _sync_active_chat(chat_root: Path, chats: list[ChatMeta]) -> ChatMeta:
+    chat_by_id = {chat.id: chat for chat in chats}
+    active_chat_id = st.session_state.active_chat_id
+    if active_chat_id not in chat_by_id:
+        active_chat_id = chats[0].id
+        st.session_state.active_chat_id = active_chat_id
+
+    active_chat = chat_by_id[active_chat_id]
+    ensure_chat_layout(active_chat.path)
+
+    if st.session_state.loaded_chat_id != active_chat.id:
+        st.session_state.loaded_chat_id = active_chat.id
+        st.session_state.messages = load_messages(active_chat.path)
+        st.session_state.uploaded_files = [
+            path.name for path in _list_documents(get_chat_documents_dir(active_chat.path))
+        ]
+        _reset_index_dependent_state(clear_messages=False)
+
+    return active_chat
+
+
 def _settings_from_state(settings: Settings) -> Settings:
     return replace(
         settings,
@@ -152,8 +195,77 @@ def _settings_from_state(settings: Settings) -> Settings:
 
 # ─────────────────────────── Sidebar ──────────────────────────────
 
-def _render_sidebar(base_settings: Settings) -> None:
+def _render_sidebar(
+    base_settings: Settings,
+    chat_root: Path,
+    chats: list[ChatMeta],
+    active_chat: ChatMeta,
+) -> None:
     with st.sidebar:
+        st.markdown(
+            '<h2 style="font-size:1.1rem;margin-bottom:0.75rem;">Чаты</h2>',
+            unsafe_allow_html=True,
+        )
+        if st.button("+ Новый чат", use_container_width=True, type="primary"):
+            chat = create_chat(chat_root)
+            _activate_chat(chat.id)
+            st.rerun()
+
+        for chat in chats:
+            is_active = chat.id == active_chat.id
+            title = f"● {chat.title}" if is_active else chat.title
+            col_chat, col_delete = st.columns([5, 1])
+            if col_chat.button(
+                title,
+                key=f"select_chat_{chat.id}",
+                use_container_width=True,
+                type="primary" if is_active else "secondary",
+                disabled=is_active,
+            ):
+                _activate_chat(chat.id)
+                st.rerun()
+
+            if col_delete.button("×", key=f"delete_chat_{chat.id}", help="Удалить чат"):
+                st.session_state.delete_chat_id = chat.id
+                st.rerun()
+
+            if st.session_state.delete_chat_id == chat.id:
+                st.warning(f"Удалить чат «{chat.title}»?")
+                confirm_col, cancel_col = st.columns(2)
+                if confirm_col.button("Да", key=f"confirm_delete_chat_{chat.id}"):
+                    delete_chat(chat_root, chat.id)
+                    remaining = list_chats(chat_root)
+                    if not remaining:
+                        remaining = [create_chat(chat_root)]
+                    remaining_by_id = {remaining_chat.id: remaining_chat for remaining_chat in remaining}
+                    next_chat = remaining_by_id.get(active_chat.id, remaining[0])
+                    st.session_state.delete_chat_id = None
+                    _activate_chat(next_chat.id)
+                    st.rerun()
+                if cancel_col.button("Нет", key=f"cancel_delete_chat_{chat.id}"):
+                    st.session_state.delete_chat_id = None
+                    st.rerun()
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.form("rename_active_chat"):
+            new_title = st.text_input("Название активного чата", value=active_chat.title)
+            renamed = st.form_submit_button("Переименовать", use_container_width=True)
+        if renamed:
+            rename_chat(chat_root, active_chat.id, new_title)
+            st.rerun()
+
+        sidebar_documents = _list_documents(get_chat_documents_dir(active_chat.path))
+        st.markdown(
+            f'<div style="margin:0.75rem 0;font-size:0.82rem;color:#8b92a8">'
+            f'Документы активного чата: <b>{len(sidebar_documents)}</b></div>',
+            unsafe_allow_html=True,
+        )
+        for document in sidebar_documents[:6]:
+            st.caption(document.name)
+        if len(sidebar_documents) > 6:
+            st.caption(f"... ещё {len(sidebar_documents) - 6}")
+
+        st.markdown('<hr style="border-color:#1e2433;margin:1rem 0">', unsafe_allow_html=True)
         st.markdown(
             '<h2 style="font-size:1.1rem;margin-bottom:1rem;">⚙️ Настройки</h2>',
             unsafe_allow_html=True,
@@ -200,16 +312,46 @@ def _render_sidebar(base_settings: Settings) -> None:
         if st.button("Очистить чат", use_container_width=True):
             st.session_state.messages = []
             st.session_state.last_context = []
+            save_messages(active_chat.path, [])
             st.rerun()
 
         if st.button("Сбросить состояние UI", use_container_width=True):
             _reset_ui_state()
+            st.session_state.active_chat_id = active_chat.id
+            st.session_state.loaded_chat_id = None
+            st.session_state.uploader_versions = {}
             st.rerun()
+
+
+def _activate_chat(chat_id: str) -> None:
+    st.session_state.active_chat_id = chat_id
+    st.session_state.loaded_chat_id = None
+    st.session_state.delete_chat_id = None
+    st.session_state.last_context = []
+    st.session_state.uploaded_files = []
+    st.session_state.chat_session = None
+    st.session_state.chat_session_signature = None
+
+
+def _uploader_key(chat_id: str) -> str:
+    versions = st.session_state.setdefault("uploader_versions", {})
+    version = int(versions.get(chat_id, 0))
+    return f"document_uploader_{chat_id}_{version}"
+
+
+def _bump_uploader_version(chat_id: str) -> None:
+    versions = st.session_state.setdefault("uploader_versions", {})
+    versions[chat_id] = int(versions.get(chat_id, 0)) + 1
 
 
 # ─────────────────────────── Status ───────────────────────────────
 
-def _render_status(settings: Settings, raw_data_dir: Path, index_dir: Path) -> None:
+def _render_status(
+    settings: Settings,
+    raw_data_dir: Path,
+    index_dir: Path,
+    active_chat: ChatMeta,
+) -> None:
     documents = _list_documents(raw_data_dir)
     index_ready = _index_exists(index_dir)
     st.session_state.index_ready = index_ready
@@ -221,6 +363,7 @@ def _render_status(settings: Settings, raw_data_dir: Path, index_dir: Path) -> N
     col3.metric("LLM model", settings.openrouter_model)
     reranker_on = getattr(settings, 'use_reranker', True)
     col4.metric("Reranker", "ON" if reranker_on else "OFF")
+    st.caption(f"Активный чат: {active_chat.title}")
 
     if not settings.openrouter_api_key:
         st.markdown(
@@ -239,7 +382,12 @@ def _render_status(settings: Settings, raw_data_dir: Path, index_dir: Path) -> N
 
 # ─────────────────────────── Upload & Index ───────────────────────
 
-def _render_upload_and_index(settings: Settings, raw_data_dir: Path, index_dir: Path) -> None:
+def _render_upload_and_index(
+    settings: Settings,
+    raw_data_dir: Path,
+    index_dir: Path,
+    active_chat: ChatMeta,
+) -> None:
     st.markdown("### Документы")
 
     if st.session_state.notice:
@@ -247,10 +395,11 @@ def _render_upload_and_index(settings: Settings, raw_data_dir: Path, index_dir: 
         st.session_state.notice = None
 
     uploaded_files = st.file_uploader(
-        "Загрузите PDF или DOCX",
-        type=["pdf", "docx"],
+        "Загрузите PDF, DOCX, TXT или MD",
+        type=["pdf", "docx", "txt", "md"],
         accept_multiple_files=True,
         label_visibility="collapsed",
+        key=_uploader_key(active_chat.id),
     )
 
     if uploaded_files:
@@ -264,7 +413,7 @@ def _render_upload_and_index(settings: Settings, raw_data_dir: Path, index_dir: 
             unsafe_allow_html=True,
         )
 
-    _render_document_list(raw_data_dir, index_dir)
+    _render_document_list(raw_data_dir, index_dir, active_chat)
 
     clear_index = st.checkbox("Также удалить FAISS-индекс", value=True)
     if st.button("🗑 Очистить все загруженные документы"):
@@ -273,6 +422,7 @@ def _render_upload_and_index(settings: Settings, raw_data_dir: Path, index_dir: 
             removed_index_files = _clear_index_files(index_dir) if clear_index else 0
             _reset_index_dependent_state()
             st.session_state.uploaded_files = []
+            _bump_uploader_version(active_chat.id)
             st.session_state.index_ready = _index_exists(index_dir)
             st.session_state.notice = (
                 f"Удалено документов: {removed_documents}. "
@@ -338,7 +488,7 @@ def _save_uploaded_files(uploaded_files, raw_data_dir: Path) -> None:
         st.error(error)
 
 
-def _render_document_list(raw_data_dir: Path, index_dir: Path) -> None:
+def _render_document_list(raw_data_dir: Path, index_dir: Path, active_chat: ChatMeta) -> None:
     documents = _list_documents(raw_data_dir)
     if not documents:
         st.markdown(
@@ -358,6 +508,7 @@ def _render_document_list(raw_data_dir: Path, index_dir: Path) -> None:
         if col_action.button("Удалить", key=f"delete_doc_{relative_path}"):
             try:
                 _delete_single_document(document_path, raw_data_dir, index_dir)
+                _bump_uploader_version(active_chat.id)
                 st.session_state.notice = (
                     f"Документ удалён: {relative_path}. "
                     "Индекс сброшен, выполните индексацию заново."
@@ -379,7 +530,7 @@ def _delete_single_document(path: Path, raw_data_dir: Path, index_dir: Path) -> 
 
 # ─────────────────────────── Chat ─────────────────────────────────
 
-def _render_chat(settings: Settings, index_dir: Path) -> None:
+def _render_chat(settings: Settings, index_dir: Path, active_chat: ChatMeta) -> None:
     st.markdown("### Чат")
 
     if not _index_exists(index_dir):
@@ -408,6 +559,7 @@ def _render_chat(settings: Settings, index_dir: Path) -> None:
 
     question = question.strip()
     st.session_state.messages.append({"role": "user", "content": question})
+    save_messages(active_chat.path, st.session_state.messages)
     with st.chat_message("user", avatar=_USER_AVATAR):
         st.markdown(question)
 
@@ -416,16 +568,16 @@ def _render_chat(settings: Settings, index_dir: Path) -> None:
         with st.spinner("Ищу контекст, ранжирую источники и запрашиваю LLM..."):
             response = session.stream(question, top_k=int(st.session_state.top_k))
     except MissingAPIKeyError as exc:
-        _show_llm_error("Ошибка конфигурации", exc)
+        _show_llm_error("Ошибка конфигурации", exc, active_chat.path)
         return
     except LLMTimeoutError as exc:
-        _show_llm_error("OpenRouter timeout", exc)
+        _show_llm_error("OpenRouter timeout", exc, active_chat.path)
         return
     except InvalidModelError as exc:
-        _show_llm_error("Модель недоступна", exc)
+        _show_llm_error("Модель недоступна", exc, active_chat.path)
         return
     except LLMClientError as exc:
-        _show_llm_error("Ошибка LLM", exc)
+        _show_llm_error("Ошибка LLM", exc, active_chat.path)
         return
     except FileNotFoundError:
         st.error("Индекс не найден. Сначала выполните индексацию.")
@@ -446,19 +598,20 @@ def _render_chat(settings: Settings, index_dir: Path) -> None:
                 answer_box.markdown(answer + "▌")
             answer_box.markdown(answer)
         except MissingAPIKeyError as exc:
-            _show_llm_error("Ошибка конфигурации", exc)
+            _show_llm_error("Ошибка конфигурации", exc, active_chat.path)
             return
         except LLMTimeoutError as exc:
-            _show_llm_error("OpenRouter timeout", exc)
+            _show_llm_error("OpenRouter timeout", exc, active_chat.path)
             return
         except InvalidModelError as exc:
-            _show_llm_error("Модель недоступна", exc)
+            _show_llm_error("Модель недоступна", exc, active_chat.path)
             return
         except LLMClientError as exc:
-            _show_llm_error("Ошибка LLM", exc)
+            _show_llm_error("Ошибка LLM", exc, active_chat.path)
             return
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
+    save_messages(active_chat.path, st.session_state.messages)
     _render_context(response.results)
 
 
@@ -489,9 +642,10 @@ def _chat_session_signature(settings: Settings, index_dir: Path) -> tuple:
     )
 
 
-def _show_llm_error(title: str, exc: Exception) -> None:
+def _show_llm_error(title: str, exc: Exception, chat_dir: Path) -> None:
     st.error(f"❌ {title}: {exc}")
     st.session_state.messages.append({"role": "assistant", "content": f"{title}: {exc}"})
+    save_messages(chat_dir, st.session_state.messages)
 
 
 # ─────────────────────────── Sources ──────────────────────────────
@@ -575,8 +729,9 @@ def _clear_index_files(index_dir: Path) -> int:
     return removed
 
 
-def _reset_index_dependent_state() -> None:
-    st.session_state.messages = []
+def _reset_index_dependent_state(clear_messages: bool = False) -> None:
+    if clear_messages:
+        st.session_state.messages = []
     st.session_state.last_context = []
     st.session_state.chat_session = None
     st.session_state.chat_session_signature = None
