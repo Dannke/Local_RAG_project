@@ -99,7 +99,37 @@ def main() -> None:
         print(f"  - reranker_model: {has_reranker_model}", file=_sys.stderr)
         print(f"  - rerank_candidates: {has_rerank_candidates}", file=_sys.stderr)
 
-    # ── Hero header ──
+    chat_root = chats_root(base_settings.project_root)
+    chats = initialize_chats(chat_root)
+    active_chat = _sync_active_chat(chat_root, chats)
+    settings = _settings_from_state(base_settings)
+    raw_data_dir = get_chat_documents_dir(active_chat.path)
+    index_dir = get_chat_index_dir(active_chat.path)
+
+    def chat_page() -> None:
+        _render_chat_page(settings, index_dir, chat_root, chats, active_chat)
+
+    def documents_page() -> None:
+        _render_documents_page(settings, raw_data_dir, index_dir, active_chat)
+
+    def settings_page() -> None:
+        _render_settings_page(base_settings, active_chat)
+
+    page = st.navigation(
+        [
+            st.Page(chat_page, title="Chat", icon="💬", url_path="chat", default=True),
+            st.Page(documents_page, title="Documents", icon="📄", url_path="documents"),
+            st.Page(settings_page, title="Settings", icon="⚙️", url_path="settings"),
+        ],
+        position="sidebar",
+        expanded=True,
+    )
+    _render_sidebar(active_chat)
+    _render_app_header()
+    page.run()
+
+
+def _render_app_header() -> None:
     st.markdown(
         """
         <div style="margin-bottom: 1.5rem;">
@@ -115,20 +145,6 @@ def main() -> None:
         """,
         unsafe_allow_html=True,
     )
-
-    chat_root = chats_root(base_settings.project_root)
-    chats = initialize_chats(chat_root)
-    active_chat = _sync_active_chat(chat_root, chats)
-
-    _render_sidebar(base_settings, chat_root, chats, active_chat)
-
-    settings = _settings_from_state(base_settings)
-    raw_data_dir = get_chat_documents_dir(active_chat.path)
-    index_dir = get_chat_index_dir(active_chat.path)
-
-    _render_status(settings, raw_data_dir, index_dir, active_chat)
-    _render_upload_and_index(settings, raw_data_dir, index_dir, active_chat)
-    _render_chat(settings, index_dir, active_chat)
 
 
 def _init_state() -> None:
@@ -193,134 +209,195 @@ def _settings_from_state(settings: Settings) -> Settings:
     )
 
 
-# ─────────────────────────── Sidebar ──────────────────────────────
+# ─────────────────────────── Pages ────────────────────────────────
 
-def _render_sidebar(
-    base_settings: Settings,
+def _render_chat_page(
+    settings: Settings,
+    index_dir: Path,
     chat_root: Path,
     chats: list[ChatMeta],
     active_chat: ChatMeta,
 ) -> None:
-    with st.sidebar:
+    left_panel, center_panel, right_panel = st.columns([2, 5.5, 2.5], gap="large")
+
+    with left_panel:
+        _render_chat_management_panel(chat_root, chats, active_chat)
+
+    with center_panel:
+        _render_chat(settings, index_dir, active_chat)
+
+    with right_panel:
+        _render_context(st.session_state.last_context)
+
+
+def _render_documents_page(
+    settings: Settings,
+    raw_data_dir: Path,
+    index_dir: Path,
+    active_chat: ChatMeta,
+) -> None:
+    st.markdown("### Документы")
+    _render_index_status(raw_data_dir, index_dir, active_chat)
+    st.markdown(
+        '<hr style="border-color:#1e2433;margin:1.2rem 0">',
+        unsafe_allow_html=True,
+    )
+    _render_upload_and_index(settings, raw_data_dir, index_dir, active_chat)
+
+
+def _render_settings_page(base_settings: Settings, active_chat: ChatMeta) -> None:
+    st.markdown("### Настройки")
+    st.caption(f"Активный чат: {active_chat.title}")
+
+    col_model, col_key = st.columns(2)
+    col_model.metric("LLM model", base_settings.openrouter_model)
+    col_key.metric(
+        "OpenRouter API key",
+        "Найден" if base_settings.openrouter_api_key else "Не найден",
+    )
+    _render_openrouter_warning(base_settings)
+
+    st.markdown("#### Параметры ответа")
+    st.session_state.top_k = st.number_input(
+        "Top-K chunks",
+        min_value=1,
+        max_value=20,
+        value=int(st.session_state.top_k),
+        step=1,
+    )
+    st.session_state.max_context_chars = st.number_input(
+        "MAX_CONTEXT_CHARS",
+        min_value=1_000,
+        max_value=50_000,
+        value=int(st.session_state.max_context_chars),
+        step=1_000,
+    )
+    st.session_state.temperature = st.slider(
+        "TEMPERATURE",
+        min_value=0.0,
+        max_value=1.0,
+        value=float(st.session_state.temperature),
+        step=0.05,
+    )
+
+    if st.button("Применить настройки", type="primary"):
+        st.session_state.chat_session = None
+        st.session_state.chat_session_signature = None
+        st.success("Настройки применены")
+
+    st.markdown("#### Reranker")
+    use_reranker = getattr(base_settings, 'use_reranker', True)
+    reranker_model = getattr(
+        base_settings,
+        'reranker_model',
+        'cross-encoder/mmarco-mMiniLMv2-L12-H384-v1',
+    )
+    rerank_candidates = getattr(base_settings, 'rerank_candidates', 20)
+
+    col_enabled, col_candidates = st.columns(2)
+    col_enabled.metric("Reranker", "ON" if use_reranker else "OFF")
+    col_candidates.metric("Rerank candidates", str(rerank_candidates))
+    if use_reranker:
         st.markdown(
-            '<h2 style="font-size:1.1rem;margin-bottom:0.75rem;">Чаты</h2>',
+            f'<div style="font-size:0.82rem;color:#8b92a8;word-break:break-all">'
+            f'{reranker_model}</div>',
             unsafe_allow_html=True,
         )
-        if st.button("+ Новый чат", use_container_width=True, type="primary"):
-            chat = create_chat(chat_root)
+
+    st.markdown(
+        '<hr style="border-color:#1e2433;margin:1.2rem 0">',
+        unsafe_allow_html=True,
+    )
+    if st.button("Сбросить состояние UI"):
+        _reset_ui_state()
+        st.session_state.active_chat_id = active_chat.id
+        st.session_state.loaded_chat_id = None
+        st.session_state.uploader_versions = {}
+        st.rerun()
+
+
+# ─────────────────────────── Sidebar ──────────────────────────────
+
+def _render_sidebar(active_chat: ChatMeta) -> None:
+    with st.sidebar:
+        st.markdown('<hr style="border-color:#1e2433;margin:1rem 0">', unsafe_allow_html=True)
+        st.caption(f"Активный чат: {active_chat.title}")
+
+
+def _render_chat_management_panel(
+    chat_root: Path,
+    chats: list[ChatMeta],
+    active_chat: ChatMeta,
+) -> None:
+    st.markdown(
+        '<h2 style="font-size:1.1rem;margin-bottom:0.75rem;">Чаты</h2>',
+        unsafe_allow_html=True,
+    )
+    if st.button("+ Новый чат", use_container_width=True, type="primary"):
+        chat = create_chat(chat_root)
+        _activate_chat(chat.id)
+        st.rerun()
+
+    search_query = st.text_input(
+        "Поиск чатов",
+        placeholder="Найти чат...",
+        label_visibility="collapsed",
+    ).strip().lower()
+    visible_chats = [
+        chat for chat in chats if not search_query or search_query in chat.title.lower()
+    ]
+
+    if search_query and not visible_chats:
+        st.caption("Чаты не найдены")
+
+    for chat in visible_chats:
+        is_active = chat.id == active_chat.id
+        title = f"● {chat.title}" if is_active else chat.title
+        col_chat, col_delete = st.columns([5, 1])
+        if col_chat.button(
+            title,
+            key=f"select_chat_{chat.id}",
+            use_container_width=True,
+            type="primary" if is_active else "secondary",
+            disabled=is_active,
+        ):
             _activate_chat(chat.id)
             st.rerun()
 
-        for chat in chats:
-            is_active = chat.id == active_chat.id
-            title = f"● {chat.title}" if is_active else chat.title
-            col_chat, col_delete = st.columns([5, 1])
-            if col_chat.button(
-                title,
-                key=f"select_chat_{chat.id}",
-                use_container_width=True,
-                type="primary" if is_active else "secondary",
-                disabled=is_active,
-            ):
-                _activate_chat(chat.id)
+        if col_delete.button("×", key=f"delete_chat_{chat.id}", help="Удалить чат"):
+            st.session_state.delete_chat_id = chat.id
+            st.rerun()
+
+        if st.session_state.delete_chat_id == chat.id:
+            st.warning(f"Удалить чат «{chat.title}»?")
+            confirm_col, cancel_col = st.columns(2)
+            if confirm_col.button("Да", key=f"confirm_delete_chat_{chat.id}"):
+                delete_chat(chat_root, chat.id)
+                remaining = list_chats(chat_root)
+                if not remaining:
+                    remaining = [create_chat(chat_root)]
+                remaining_by_id = {remaining_chat.id: remaining_chat for remaining_chat in remaining}
+                next_chat = remaining_by_id.get(active_chat.id, remaining[0])
+                st.session_state.delete_chat_id = None
+                _activate_chat(next_chat.id)
+                st.rerun()
+            if cancel_col.button("Нет", key=f"cancel_delete_chat_{chat.id}"):
+                st.session_state.delete_chat_id = None
                 st.rerun()
 
-            if col_delete.button("×", key=f"delete_chat_{chat.id}", help="Удалить чат"):
-                st.session_state.delete_chat_id = chat.id
-                st.rerun()
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.form("rename_active_chat"):
+        new_title = st.text_input("Название активного чата", value=active_chat.title)
+        renamed = st.form_submit_button("Переименовать", use_container_width=True)
+    if renamed:
+        rename_chat(chat_root, active_chat.id, new_title)
+        st.rerun()
 
-            if st.session_state.delete_chat_id == chat.id:
-                st.warning(f"Удалить чат «{chat.title}»?")
-                confirm_col, cancel_col = st.columns(2)
-                if confirm_col.button("Да", key=f"confirm_delete_chat_{chat.id}"):
-                    delete_chat(chat_root, chat.id)
-                    remaining = list_chats(chat_root)
-                    if not remaining:
-                        remaining = [create_chat(chat_root)]
-                    remaining_by_id = {remaining_chat.id: remaining_chat for remaining_chat in remaining}
-                    next_chat = remaining_by_id.get(active_chat.id, remaining[0])
-                    st.session_state.delete_chat_id = None
-                    _activate_chat(next_chat.id)
-                    st.rerun()
-                if cancel_col.button("Нет", key=f"cancel_delete_chat_{chat.id}"):
-                    st.session_state.delete_chat_id = None
-                    st.rerun()
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        with st.form("rename_active_chat"):
-            new_title = st.text_input("Название активного чата", value=active_chat.title)
-            renamed = st.form_submit_button("Переименовать", use_container_width=True)
-        if renamed:
-            rename_chat(chat_root, active_chat.id, new_title)
-            st.rerun()
-
-        sidebar_documents = _list_documents(get_chat_documents_dir(active_chat.path))
-        st.markdown(
-            f'<div style="margin:0.75rem 0;font-size:0.82rem;color:#8b92a8">'
-            f'Документы активного чата: <b>{len(sidebar_documents)}</b></div>',
-            unsafe_allow_html=True,
-        )
-        for document in sidebar_documents[:6]:
-            st.caption(document.name)
-        if len(sidebar_documents) > 6:
-            st.caption(f"... ещё {len(sidebar_documents) - 6}")
-
-        st.markdown('<hr style="border-color:#1e2433;margin:1rem 0">', unsafe_allow_html=True)
-        st.markdown(
-            '<h2 style="font-size:1.1rem;margin-bottom:1rem;">⚙️ Настройки</h2>',
-            unsafe_allow_html=True,
-        )
-        st.session_state.top_k = st.number_input(
-            "Top-K chunks",
-            min_value=1, max_value=20,
-            value=int(st.session_state.top_k), step=1,
-        )
-        st.session_state.max_context_chars = st.number_input(
-            "MAX_CONTEXT_CHARS",
-            min_value=1_000, max_value=50_000,
-            value=int(st.session_state.max_context_chars), step=1_000,
-        )
-        st.session_state.temperature = st.slider(
-            "TEMPERATURE",
-            min_value=0.0, max_value=1.0,
-            value=float(st.session_state.temperature), step=0.05,
-        )
-
-        use_reranker = getattr(base_settings, 'use_reranker', True)
-        st.markdown(
-            f'<div style="margin:0.5rem 0;font-size:0.82rem;color:#8b92a8">'
-            f'Reranker: <b>{"ON ✓" if use_reranker else "OFF"}</b></div>',
-            unsafe_allow_html=True,
-        )
-        if use_reranker:
-            reranker_model = getattr(
-                base_settings, 'reranker_model',
-                'cross-encoder/mmarco-mMiniLMv2-L12-H384-v1',
-            )
-            st.markdown(
-                f'<div style="font-size:0.72rem;color:#5a6078;word-break:break-all">'                f'{reranker_model}</div>',
-                unsafe_allow_html=True,
-            )
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        if st.button("Применить настройки", use_container_width=True):
-            st.session_state.chat_session = None
-            st.session_state.chat_session_signature = None
-            st.success("Настройки применены")
-
-        if st.button("Очистить чат", use_container_width=True):
-            st.session_state.messages = []
-            st.session_state.last_context = []
-            save_messages(active_chat.path, [])
-            st.rerun()
-
-        if st.button("Сбросить состояние UI", use_container_width=True):
-            _reset_ui_state()
-            st.session_state.active_chat_id = active_chat.id
-            st.session_state.loaded_chat_id = None
-            st.session_state.uploader_versions = {}
-            st.rerun()
+    if st.button("Очистить чат", use_container_width=True):
+        st.session_state.messages = []
+        st.session_state.last_context = []
+        save_messages(active_chat.path, [])
+        st.rerun()
 
 
 def _activate_chat(chat_id: str) -> None:
@@ -352,19 +429,27 @@ def _render_status(
     index_dir: Path,
     active_chat: ChatMeta,
 ) -> None:
+    _render_index_status(raw_data_dir, index_dir, active_chat)
+    _render_openrouter_warning(settings)
+
+
+def _render_index_status(
+    raw_data_dir: Path,
+    index_dir: Path,
+    active_chat: ChatMeta,
+) -> None:
     documents = _list_documents(raw_data_dir)
     index_ready = _index_exists(index_dir)
     st.session_state.index_ready = index_ready
 
     st.markdown("### Статус")
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2 = st.columns(2)
     col1.metric("Индекс", "Готов ✓" if index_ready else "Не создан")
     col2.metric("Документы", str(len(documents)))
-    col3.metric("LLM model", settings.openrouter_model)
-    reranker_on = getattr(settings, 'use_reranker', True)
-    col4.metric("Reranker", "ON" if reranker_on else "OFF")
     st.caption(f"Активный чат: {active_chat.title}")
 
+
+def _render_openrouter_warning(settings: Settings) -> None:
     if not settings.openrouter_api_key:
         st.markdown(
             '<div style="background:rgba(239,83,80,0.09);border-left:4px solid #ef5350;'
@@ -373,11 +458,6 @@ def _render_status(
             'перед запуском чата.</div>',
             unsafe_allow_html=True,
         )
-
-    st.markdown(
-        '<hr style="border-color:#1e2433;margin:1.2rem 0">',
-        unsafe_allow_html=True,
-    )
 
 
 # ─────────────────────────── Upload & Index ───────────────────────
@@ -388,8 +468,6 @@ def _render_upload_and_index(
     index_dir: Path,
     active_chat: ChatMeta,
 ) -> None:
-    st.markdown("### Документы")
-
     if st.session_state.notice:
         st.success(st.session_state.notice)
         st.session_state.notice = None
@@ -550,11 +628,9 @@ def _render_chat(settings: Settings, index_dir: Path, active_chat: ChatMeta) -> 
         submitted = st.form_submit_button("➤ Отправить", type="primary")
 
     if not submitted:
-        _render_context(st.session_state.last_context)
         return
     if not question or not question.strip():
         st.warning("⚠️ Введите вопрос перед отправкой.")
-        _render_context(st.session_state.last_context)
         return
 
     question = question.strip()
@@ -612,7 +688,6 @@ def _render_chat(settings: Settings, index_dir: Path, active_chat: ChatMeta) -> 
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
     save_messages(active_chat.path, st.session_state.messages)
-    _render_context(response.results)
 
 
 def _get_chat_session(settings: Settings, index_dir: Path) -> ChatSession:
