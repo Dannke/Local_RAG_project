@@ -218,16 +218,16 @@ def _render_chat_page(
     chats: list[ChatMeta],
     active_chat: ChatMeta,
 ) -> None:
-    left_panel, center_panel, right_panel = st.columns([2, 5.5, 2.5], gap="large")
+    left_panel, center_panel, right_panel = st.columns([1, 4.67, 1], gap="medium")
 
     with left_panel:
-        _render_chat_management_panel(chat_root, chats, active_chat)
+        _render_left_panel(chat_root, chats, active_chat)
 
     with center_panel:
-        _render_chat(settings, index_dir, active_chat)
+        _render_center_panel(settings, index_dir, active_chat)
 
     with right_panel:
-        _render_context(st.session_state.last_context)
+        _render_right_panel(st.session_state.last_context)
 
 
 def _render_documents_page(
@@ -324,11 +324,12 @@ def _render_sidebar(active_chat: ChatMeta) -> None:
         st.caption(f"Активный чат: {active_chat.title}")
 
 
-def _render_chat_management_panel(
+def _render_left_panel(
     chat_root: Path,
     chats: list[ChatMeta],
     active_chat: ChatMeta,
 ) -> None:
+    """LEFT PANEL: Chat management (new chat, chat list, search, rename, delete)."""
     st.markdown(
         '<h2 style="font-size:1.1rem;margin-bottom:0.75rem;">Чаты</h2>',
         unsafe_allow_html=True,
@@ -608,7 +609,8 @@ def _delete_single_document(path: Path, raw_data_dir: Path, index_dir: Path) -> 
 
 # ─────────────────────────── Chat ─────────────────────────────────
 
-def _render_chat(settings: Settings, index_dir: Path, active_chat: ChatMeta) -> None:
+def _render_center_panel(settings: Settings, index_dir: Path, active_chat: ChatMeta) -> None:
+    """CENTER PANEL: Conversation (message history, streaming responses, chat input)."""
     st.markdown("### Чат")
 
     if not _index_exists(index_dir):
@@ -725,7 +727,8 @@ def _show_llm_error(title: str, exc: Exception, chat_dir: Path) -> None:
 
 # ─────────────────────────── Sources ──────────────────────────────
 
-def _render_context(results) -> None:
+def _render_right_panel(results) -> None:
+    """RIGHT PANEL: Citations panel (retrieved chunks, source metadata, PDF page numbers, relevance scores)."""
     st.markdown("### Источники")
     if not results:
         st.markdown(

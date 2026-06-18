@@ -1,141 +1,176 @@
 /* Global */
 .block-container {
-    padding-top: 1.5rem;
-    padding-bottom: 3rem;
-    max-width: 1100px;
+  padding-top: 1.5rem;
+  padding-bottom: 3rem;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+  max-width: 100%;
+}
+
+section.main {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+main {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  width: 100% !important;
 }
 
 /* Keep the header visible because it contains the sidebar toggle. */
-footer { visibility: hidden; }
-#MainMenu { visibility: hidden; }
+footer {
+  visibility: hidden;
+}
+#MainMenu {
+  visibility: hidden;
+}
 header {
-    visibility: visible !important;
-    background: transparent;
-    z-index: 999999 !important;
+  visibility: visible !important;
+  background: transparent;
+  z-index: 999999 !important;
 }
 
 header * {
-    visibility: visible !important;
+  visibility: visible !important;
 }
 
 [data-testid="stToolbar"] {
-    pointer-events: auto !important;
+  pointer-events: auto !important;
 }
 
 [data-testid="stSidebarCollapseButton"],
 [data-testid="stSidebarCollapsedControl"],
 [data-testid="collapsedControl"] {
-    visibility: visible !important;
-    opacity: 1 !important;
-    pointer-events: auto !important;
-    z-index: 999999 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: 999999 !important;
 }
 
 /* Metric cards */
 div[data-testid="stMetric"] {
-    background: linear-gradient(135deg, #1e2433 0%, #1a1f2e 100%);
-    border: 1px solid #2a3040;
-    border-radius: 12px;
-    padding: 14px 18px;
-    transition: border-color 0.2s;
+  background: linear-gradient(135deg, #1e2433 0%, #1a1f2e 100%);
+  border: 1px solid #2a3040;
+  border-radius: 12px;
+  padding: 14px 18px;
+  transition: border-color 0.2s;
 }
 
 div[data-testid="stMetric"]:hover {
-    border-color: #7C4DFF;
+  border-color: #7c4dff;
 }
 
 div[data-testid="stMetric"] label {
-    color: #8b92a8 !important;
-    font-size: 0.78rem !important;
-    font-weight: 500 !important;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+  color: #8b92a8 !important;
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-    font-size: 1.35rem !important;
-    font-weight: 600 !important;
+  font-size: 1.35rem !important;
+  font-weight: 600 !important;
 }
 
 /* Chat messages */
 [data-testid="stChatMessage"] {
-    border-radius: 12px !important;
-    padding: 12px 16px !important;
-    margin-bottom: 8px !important;
+  border-radius: 12px !important;
+  padding: 12px 16px !important;
+  margin-bottom: 8px !important;
 }
 
 /* Chat avatars: monochrome safeguard */
 [data-testid="chatAvatarUser"] img,
 [data-testid="chatAvatarAssistant"] img {
-    filter: grayscale(100%) !important;
-    opacity: 0.82 !important;
+  filter: grayscale(100%) !important;
+  opacity: 0.82 !important;
 }
 
 /* File uploader */
 [data-testid="stFileUploaderDropzone"] {
-    border: 2px dashed #2a3040 !important;
-    border-radius: 12px !important;
-    background: #151922 !important;
-    transition: border-color 0.2s;
+  border: 2px dashed #2a3040 !important;
+  border-radius: 12px !important;
+  background: #151922 !important;
+  transition: border-color 0.2s;
 }
 
 [data-testid="stFileUploaderDropzone"]:hover {
-    border-color: #7C4DFF !important;
+  border-color: #7c4dff !important;
 }
 
 /* Buttons */
 .stButton > button {
-    border-radius: 10px !important;
-    font-weight: 500 !important;
-    transition: all 0.2s !important;
-    border: 1px solid #2a3040 !important;
+  border-radius: 10px !important;
+  font-weight: 500 !important;
+  transition: all 0.2s !important;
+  border: 1px solid #2a3040 !important;
 }
 
 .stButton > button:hover {
-    border-color: #7C4DFF !important;
-    box-shadow: 0 0 12px rgba(124, 77, 255, 0.19) !important;
+  border-color: #7c4dff !important;
+  box-shadow: 0 0 12px rgba(124, 77, 255, 0.19) !important;
 }
 
 button[data-testid="baseButton-primary"] {
-    background: linear-gradient(135deg, #7C4DFF, #5E35B1) !important;
-    border: none !important;
+  background: linear-gradient(135deg, #7c4dff, #5e35b1) !important;
+  border: none !important;
 }
 
 /* Sidebar */
 [data-testid="stSidebar"] {
-    background: #11141b !important;
-    border-right: 1px solid #1e2433 !important;
+  background: #11141b !important;
+  border-right: 1px solid #1e2433 !important;
 }
 
 /* Progress bar */
 [data-testid="stProgressBar"] > div > div {
-    background: linear-gradient(90deg, #7C4DFF, #512DA8) !important;
-    border-radius: 8px !important;
+  background: linear-gradient(90deg, #7c4dff, #512da8) !important;
+  border-radius: 8px !important;
 }
 
 /* Alerts */
 [data-testid="stAlert"] {
-    border-radius: 10px !important;
-    border-left-width: 4px !important;
+  border-radius: 10px !important;
+  border-left-width: 4px !important;
 }
 
 /* Spinner */
 .stSpinner > div {
-    border-top-color: #7C4DFF !important;
+  border-top-color: #7c4dff !important;
 }
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #2a3040; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #3a4055; }
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a3040;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a4055;
+}
 
 /* Animations */
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 div[data-testid="stMetric"] {
-    animation: fadeIn 0.3s ease-out;
+  animation: fadeIn 0.3s ease-out;
 }
