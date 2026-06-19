@@ -236,13 +236,203 @@ def _render_documents_page(
     index_dir: Path,
     active_chat: ChatMeta,
 ) -> None:
-    st.markdown("### Документы")
-    _render_index_status(raw_data_dir, index_dir, active_chat)
-    st.markdown(
-        '<hr style="border-color:#1e2433;margin:1.2rem 0">',
-        unsafe_allow_html=True,
-    )
-    _render_upload_and_index(settings, raw_data_dir, index_dir, active_chat)
+    # Knowledge Base Dashboard
+    with st.container(border=True):
+        st.subheader("Knowledge Base")
+        # compute metrics
+        total_docs = len(_list_documents(raw_data_dir))
+        # total chunks from manifest
+        total_chunks = None
+        manifest_path = index_dir / "manifest.json"
+        if manifest_path.exists():
+            try:
+                import json
+                data = json.loads(manifest_path.read_text())
+                total_chunks = sum(len(v.get("chunk_ids", [])) for v in data.get("files", {}).values())
+            except Exception:
+                total_chunks = None
+        index_status = "Ready" if _index_exists(index_dir) else "Not Created"
+        index_size_mb = None
+        index_faiss_path = index_dir / "index.faiss"
+        if index_faiss_path.exists():
+            try:
+                index_size_mb = index_faiss_path.stat().st_size / (1024 * 1024)
+            except Exception:
+                index_size_mb = None
+        
+        # display cards horizontally
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Documents", total_docs)
+        with col2:
+            st.metric("Chunks", total_chunks if total_chunks is not None else "N/A")
+        with col3:
+            st.metric("Index Status", index_status)
+        with col4:
+            st.metric("Index Size (MB)", f"{index_size_mb:.2f}" if index_size_mb is not None else "N/A")
+    
+    st.markdown("<br>", unsafe_allow_html=True)  # spacing
+    
+    # Upload Documents section
+    with st.container(border=True):
+        st.subheader("Upload Documents")
+        uploaded_files = st.file_uploader(
+            "Загрузите PDF, DOCX, TXT или MD",
+            type=["pdf", "docx", "txt", "md"],
+            accept_multiple_files=True,
+            label_visibility="collapsed",
+            key=_uploader_key(active_chat.id),
+        )
+        if uploaded_files:
+            _save_uploaded_files(uploaded_files, raw_data_dir)
+        # Show list of uploaded files in this session
+        if st.session_state.uploaded_files:
+            files_list = ", ".join(st.session_state.uploaded_files)
+            st.caption(f"Файлы в этой сессии: {files_list}")
+        # Index button
+        if st.button("Индексировать документы", type="primary", key="index_btn"):
+            # call ingest_to_faiss with progress
+            try:
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                def update_progress(stage: str, current: int, total: int) -> None:
+                    if total > 0:
+                        progress_bar.progress(current / total, text=f"{stage}: {current}/{total}")
+                    else:
+                        status_text.text(stage)
+                status_text.text("Инициализация индексирования...")
+                count = ingest_to_faiss(
+                    input_dir=raw_data_dir,
+                    index_dir=index_dir,
+                    settings=settings,
+                    incremental=True,
+                    progress_callback=update_progress,
+                )
+                progress_bar.progress(1.0, text="Завершено!")
+                st.session_state.index_ready = True
+                st.session_state.chat_session = None
+                st.session_state.chat_session_signature = None
+                st.success(f"Индекс обновлён. Chunks: {count}")
+            except Exception as exc:
+                st.session_state.index_ready = False
+                st.error(f"Ошибка индексации: {exc}")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Document Cards section
+    with st.container(border=True):
+        st.subheader("Documents")
+        documents = _list_documents(raw_data_dir)
+        if not documents:
+            # empty state
+            st.markdown(
+                '<div style="text-align:center; padding:2rem; color:#5a6078;">'
+                '<div style="font-size:3rem;">📂</div>'
+                '<div style="font-size:1.2rem; margin-top:1rem;">No documents uploaded</div>'
+                '<div style="font-size:0.9rem; margin-top:0.5rem;">Upload PDF, DOCX, TXT or MD files to start building your knowledge base.</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            # display as cards in a grid? maybe 3 columns
+            cols = st.columns(3)
+            for idx, doc_path in enumerate(documents):
+                with cols[idx % 3]:
+                    # card container
+                    with st.container(border=True):
+                        # file icon based on extension
+                        ext = doc_path.suffix.lower()
+                        icon = {
+                            ".pdf": "📄",
+                            ".docx": "📘",
+                            ".txt": "📓",
+                            ".md": "📝"
+                        }.get(ext, "📎")
+                        st.markdown(f"{icon} **{doc_path.name}**")
+                        # file type
+                        st.caption(f"Type: {ext.upper()[1:] if ext.startswith('.') else ext.upper()}")
+                        # file size
+                        size_kb = doc_path.stat().st_size / 1024
+                        st.caption(f"Size: {size_kb:.1f} KB")
+                        # chat ownership
+                        st.caption(f"Current Chat: {active_chat.title}")
+                        # optional: page count? not available; chunk count from manifest if available
+                        chunk_count = None
+                        if manifest_path.exists():
+                            try:
+                                import json
+                                data = json.loads(manifest_path.read_text())
+                                file_info = data.get("files", {}).get(doc_path.name)
+                                if file_info:
+                                    chunk_count = len(file_info.get("chunk_ids", []))
+                            except Exception:
+                                pass
+                        if chunk_count is not None:
+                            st.caption(f"Chunks: {chunk_count}")
+                        # actions
+                        if st.button("Delete", key=f"delete_doc_{doc_path.name}", type="secondary"):
+                            # delete file and clear index
+                            try:
+                                _safe_unlink(doc_path, raw_data_dir)
+                                _clear_index_files(index_dir)
+                                st.session_state.uploaded_files = [
+                                    n for n in st.session_state.uploaded_files if n != doc_path.name
+                                ]
+                                _reset_index_dependent_state()
+                                st.session_state.index_ready = False
+                                st.success(f"Deleted {doc_path.name}")
+                                st.rerun()
+                            except Exception as exc:
+                                st.error(f"Error deleting: {exc}")
+                        # Reindex button if supported (we have ingest incremental; we can call ingest_to_faiss again? but spec says only expose existing actions; reindex may be supported via ingest_to_faiss incremental? We'll add if we want but optional.
+                        # We'll skip for now.
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Index Management section
+    with st.container(border=True):
+        st.subheader("Index Management")
+        col_idx1, col_idx2 = st.columns(2)
+        with col_idx1:
+            st.metric("Index Status", index_status)
+            if st.button("Clear Index", key="clear_idx"):
+                try:
+                    removed = _clear_index_files(index_dir)
+                    st.session_state.index_ready = False
+                    st.session_state.chat_session = None
+                    st.session_state.chat_session_signature = None
+                    st.success(f"Cleared index files: {removed}")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Error clearing index: {exc}")
+        with col_idx2:
+            st.metric("Index Size (MB)", f"{index_size_mb:.2f}" if index_size_mb is not None else "N/A")
+            if st.button("Rebuild Index", key="rebuild_idx"):
+                # same as indexing button but maybe with incremental=False
+                try:
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    def update_progress(stage: str, current: int, total: int) -> None:
+                        if total > 0:
+                            progress_bar.progress(current / total, text=f"{stage}: {current}/{total}")
+                        else:
+                            status_text.text(stage)
+                    status_text.text("Реbuilding индекса...")
+                    count = ingest_to_faiss(
+                        input_dir=raw_data_dir,
+                        index_dir=index_dir,
+                        settings=settings,
+                        incremental=False,  # full rebuild
+                        progress_callback=update_progress,
+                    )
+                    progress_bar.progress(1.0, text="Завершено!")
+                    st.session_state.index_ready = True
+                    st.session_state.chat_session = None
+                    st.session_state.chat_session_signature = None
+                    st.success(f"Индекс rebuilt. Chunks: {count}")
+                    st.rerun()
+                except Exception as exc:
+                    st.session_state.index_ready = False
+                    st.error(f"Ошибка ребилда: {exc}")
 
 
 def _render_settings_page(base_settings: Settings, active_chat: ChatMeta) -> None:
