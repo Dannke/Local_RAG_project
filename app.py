@@ -236,13 +236,34 @@ def _render_documents_page(
     index_dir: Path,
     active_chat: ChatMeta,
 ) -> None:
-    st.markdown("### Документы")
-    _render_index_status(raw_data_dir, index_dir, active_chat)
+    st.markdown("### 📚 Документы")
+    
+    # Section 1: Knowledge Base Dashboard
+    _render_knowledge_base_dashboard(raw_data_dir, index_dir)
+    
     st.markdown(
-        '<hr style="border-color:#1e2433;margin:1.2rem 0">',
+        '<div style="height:1px;background:#2a3040;margin:1.5rem 0"></div>',
         unsafe_allow_html=True,
     )
-    _render_upload_and_index(settings, raw_data_dir, index_dir, active_chat)
+    
+    # Section 2: Upload Documents
+    _render_upload_section(settings, raw_data_dir, index_dir, active_chat)
+    
+    st.markdown(
+        '<div style="height:1px;background:#2a3040;margin:1.5rem 0"></div>',
+        unsafe_allow_html=True,
+    )
+    
+    # Section 3: Document Cards
+    _render_documents_section(raw_data_dir, index_dir, active_chat)
+    
+    st.markdown(
+        '<div style="height:1px;background:#2a3040;margin:1.5rem 0"></div>',
+        unsafe_allow_html=True,
+    )
+    
+    # Section 6: Index Management
+    _render_index_management(settings, raw_data_dir, index_dir, active_chat)
 
 
 def _render_settings_page(base_settings: Settings, active_chat: ChatMeta) -> None:
@@ -430,24 +451,7 @@ def _render_status(
     index_dir: Path,
     active_chat: ChatMeta,
 ) -> None:
-    _render_index_status(raw_data_dir, index_dir, active_chat)
     _render_openrouter_warning(settings)
-
-
-def _render_index_status(
-    raw_data_dir: Path,
-    index_dir: Path,
-    active_chat: ChatMeta,
-) -> None:
-    documents = _list_documents(raw_data_dir)
-    index_ready = _index_exists(index_dir)
-    st.session_state.index_ready = index_ready
-
-    st.markdown("### Статус")
-    col1, col2 = st.columns(2)
-    col1.metric("Индекс", "Готов ✓" if index_ready else "Не создан")
-    col2.metric("Документы", str(len(documents)))
-    st.caption(f"Активный чат: {active_chat.title}")
 
 
 def _render_openrouter_warning(settings: Settings) -> None:
@@ -461,41 +465,380 @@ def _render_openrouter_warning(settings: Settings) -> None:
         )
 
 
-# ─────────────────────────── Upload & Index ───────────────────────
+# ─────────────────────────── Knowledge Base Dashboard ───────────────
 
-def _render_upload_and_index(
+def _get_index_metrics(raw_data_dir: Path, index_dir: Path) -> dict:
+    """Calculate knowledge base metrics."""
+    documents = _list_documents(raw_data_dir)
+    total_docs = len(documents)
+    
+    total_size_mb = sum(doc.stat().st_size for doc in documents) / (1024 * 1024)
+    
+    index_ready = _index_exists(index_dir)
+    
+    # Read chunk count from documents.json if available
+    total_chunks = "N/A"
+    docs_file = index_dir / "documents.json"
+    if docs_file.exists():
+        try:
+            import json
+            with open(docs_file, "r", encoding="utf-8") as f:
+                docs_data = json.load(f)
+                if isinstance(docs_data, list):
+                    total_chunks = len(docs_data)
+        except Exception:
+            pass
+    
+    # Get index size
+    index_size_mb = 0.0
+    if index_dir.exists():
+        for file_path in (index_dir / "index.faiss", index_dir / "documents.json", index_dir / "manifest.json"):
+            if file_path.exists():
+                index_size_mb += file_path.stat().st_size / (1024 * 1024)
+    
+    return {
+        "total_docs": total_docs,
+        "total_chunks": total_chunks,
+        "index_status": "Ready ✓" if index_ready else "Not created",
+        "index_size_mb": index_size_mb,
+        "total_size_mb": total_size_mb,
+    }
+
+
+def _render_knowledge_base_dashboard(raw_data_dir: Path, index_dir: Path) -> None:
+    """Render Knowledge Base Dashboard with metrics cards."""
+    st.markdown("#### Knowledge Base")
+    
+    metrics = _get_index_metrics(raw_data_dir, index_dir)
+    
+    col1, col2, col3, col4 = st.columns(4, gap="small")
+    
+    with col1:
+        st.markdown(
+            f'<div style="background:#1a1f2e;border:1px solid #2a3040;border-radius:10px;'
+            f'padding:14px 16px;text-align:center;">'
+            f'<div style="font-size:0.85rem;color:#8b92a8;margin-bottom:8px;">📄 Documents</div>'
+            f'<div style="font-size:1.6rem;font-weight:700;color:#7c4dff;">{metrics["total_docs"]}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    
+    with col2:
+        chunks_display = metrics["total_chunks"] if isinstance(metrics["total_chunks"], int) else metrics["total_chunks"]
+        st.markdown(
+            f'<div style="background:#1a1f2e;border:1px solid #2a3040;border-radius:10px;'
+            f'padding:14px 16px;text-align:center;">'
+            f'<div style="font-size:0.85rem;color:#8b92a8;margin-bottom:8px;">🔗 Chunks</div>'
+            f'<div style="font-size:1.6rem;font-weight:700;color:#7c4dff;">{chunks_display}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    
+    with col3:
+        st.markdown(
+            f'<div style="background:#1a1f2e;border:1px solid #2a3040;border-radius:10px;'
+            f'padding:14px 16px;text-align:center;">'
+            f'<div style="font-size:0.85rem;color:#8b92a8;margin-bottom:8px;">⚙️ Index</div>'
+            f'<div style="font-size:0.95rem;font-weight:700;color:{"#66bb6a" if "Ready" in metrics["index_status"] else "#ffa726"};">'
+            f'{metrics["index_status"]}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    
+    with col4:
+        size_display = f'{metrics["index_size_mb"]:.1f} MB' if metrics["index_size_mb"] > 0 else "N/A"
+        st.markdown(
+            f'<div style="background:#1a1f2e;border:1px solid #2a3040;border-radius:10px;'
+            f'padding:14px 16px;text-align:center;">'
+            f'<div style="font-size:0.85rem;color:#8b92a8;margin-bottom:8px;">💾 Index Size</div>'
+            f'<div style="font-size:1.2rem;font-weight:700;color:#7c4dff;">{size_display}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+
+# ─────────────────────────── Upload Section ───────────────────────────
+
+def _render_upload_section(
     settings: Settings,
     raw_data_dir: Path,
     index_dir: Path,
     active_chat: ChatMeta,
 ) -> None:
+    """Render Upload Documents section."""
+    st.markdown("#### Upload Documents")
+    
+    col_uploader, col_badge = st.columns([4, 1])
+    
+    with col_uploader:
+        uploaded_files = st.file_uploader(
+            "Загрузите PDF, DOCX, TXT или MD",
+            type=["pdf", "docx", "txt", "md"],
+            accept_multiple_files=True,
+            label_visibility="collapsed",
+            key=_uploader_key(active_chat.id),
+        )
+        if uploaded_files:
+            _save_uploaded_files(uploaded_files, raw_data_dir)
+    
+    with col_badge:
+        st.markdown(
+            '<div style="background:#7c4dff;color:white;padding:8px 12px;border-radius:8px;'
+            'text-align:center;font-size:0.75rem;font-weight:700;">'
+            'PDF · DOCX · TXT · MD'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+    
     if st.session_state.notice:
         st.success(st.session_state.notice)
         st.session_state.notice = None
-
-    uploaded_files = st.file_uploader(
-        "Загрузите PDF, DOCX, TXT или MD",
-        type=["pdf", "docx", "txt", "md"],
-        accept_multiple_files=True,
-        label_visibility="collapsed",
-        key=_uploader_key(active_chat.id),
-    )
-
-    if uploaded_files:
-        _save_uploaded_files(uploaded_files, raw_data_dir)
-
+    
     if st.session_state.uploaded_files:
         files_list = ", ".join(st.session_state.uploaded_files)
         st.markdown(
-            f'<div style="font-size:0.82rem;color:#8b92a8;margin:0.4rem 0">'
-            f'Файлы в этой сессии: {files_list}</div>',
+            f'<div style="font-size:0.82rem;color:#8b92a8;margin:0.8rem 0;'
+            f'background:#1a1f2e;padding:8px 12px;border-radius:6px;">'
+            f'📋 Session files: {files_list}</div>',
             unsafe_allow_html=True,
         )
 
-    _render_document_list(raw_data_dir, index_dir, active_chat)
 
-    clear_index = st.checkbox("Также удалить FAISS-индекс", value=True)
-    if st.button("🗑 Очистить все загруженные документы"):
+# ─────────────────────────── Documents Section ───────────────────────
+
+def _get_file_icon(file_extension: str) -> str:
+    """Get emoji icon for file type."""
+    icons = {
+        ".pdf": "📄",
+        ".docx": "📝",
+        ".doc": "📝",
+        ".txt": "📋",
+        ".md": "📖",
+    }
+    return icons.get(file_extension.lower(), "📎")
+
+
+def _get_file_type(file_extension: str) -> str:
+    """Get readable file type."""
+    types = {
+        ".pdf": "PDF",
+        ".docx": "DOCX",
+        ".doc": "DOC",
+        ".txt": "Text",
+        ".md": "Markdown",
+    }
+    return types.get(file_extension.lower(), "File")
+
+
+def _render_documents_section(raw_data_dir: Path, index_dir: Path, active_chat: ChatMeta) -> None:
+    """Render document cards section."""
+    st.markdown("#### Documents")
+    
+    documents = _list_documents(raw_data_dir)
+    
+    if not documents:
+        _render_empty_state()
+        return
+    
+    # Render document cards
+    for document_path in sorted(documents):
+        _render_document_card(document_path, raw_data_dir, index_dir, active_chat)
+
+
+def _render_empty_state() -> None:
+    """Render empty state for documents."""
+    st.markdown(
+        '<div style="text-align:center;padding:3rem 2rem;color:#5a6078;">'
+        '<div style="font-size:3rem;margin-bottom:1rem;">📂</div>'
+        '<div style="font-size:1.1rem;font-weight:500;margin-bottom:0.5rem;">No documents uploaded</div>'
+        '<div style="font-size:0.9rem;color:#8b92a8;">'
+        'Upload PDF, DOCX, TXT or MD files to start building your knowledge base.'
+        '</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _render_document_card(
+    document_path: Path,
+    raw_data_dir: Path,
+    index_dir: Path,
+    active_chat: ChatMeta,
+) -> None:
+    """Render a single document card."""
+    relative_path = document_path.relative_to(raw_data_dir).as_posix()
+    file_ext = document_path.suffix.lower()
+    file_type = _get_file_type(file_ext)
+    file_icon = _get_file_icon(file_ext)
+    
+    # File size
+    file_size_bytes = document_path.stat().st_size
+    if file_size_bytes < 1024:
+        size_str = f"{file_size_bytes} B"
+    elif file_size_bytes < 1024 * 1024:
+        size_str = f"{file_size_bytes / 1024:.1f} KB"
+    else:
+        size_str = f"{file_size_bytes / (1024 * 1024):.1f} MB"
+    
+    # Card container
+    card_key = f"doc_card_{relative_path}"
+    
+    col_card = st.columns(1)[0]
+    with col_card:
+        st.markdown(
+            f'<div style="background:#1a1f2e;border:1px solid #2a3040;border-radius:10px;'
+            f'padding:16px;margin-bottom:10px;transition:all 0.2s;">'
+            f'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">'
+            f'<div style="flex:1;">'
+            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
+            f'<span style="font-size:1.5rem;">{file_icon}</span>'
+            f'<div>'
+            f'<div style="font-weight:600;font-size:0.95rem;color:#e0e0e0;">{Path(relative_path).name}</div>'
+            f'<div style="font-size:0.8rem;color:#8b92a8;">{file_type}</div>'
+            f'</div>'
+            f'</div>'
+            f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:0.8rem;">'
+            f'<div style="color:#8b92a8;"><b>Size:</b> {size_str}</div>'
+            f'<div style="color:#8b92a8;"><b>Chat:</b> {active_chat.title}</div>'
+            f'</div>'
+            f'</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        
+        # Action buttons
+        col_delete, col_reindex = st.columns(2)
+        
+        with col_delete:
+            if st.button(
+                "🗑 Delete",
+                key=f"delete_{relative_path}",
+                use_container_width=True,
+                type="secondary"
+            ):
+                try:
+                    _delete_single_document(document_path, raw_data_dir, index_dir)
+                    _bump_uploader_version(active_chat.id)
+                    st.session_state.notice = (
+                        f"Document deleted: {relative_path}. "
+                        "Index reset, run indexing again."
+                    )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Error deleting file: {exc}")
+        
+        with col_reindex:
+            if st.button(
+                "🔄 Reindex",
+                key=f"reindex_{relative_path}",
+                use_container_width=True,
+                type="secondary"
+            ):
+                try:
+                    st.session_state.notice = (
+                        f"Please use 'Index Documents' button to reindex all documents."
+                    )
+                    st.info("Run 'Index Documents' to rebuild the index.")
+                except Exception as exc:
+                    st.error(f"Error: {exc}")
+
+
+# ─────────────────────────── Index Management ──────────────────────
+
+def _render_index_management(
+    settings: Settings,
+    raw_data_dir: Path,
+    index_dir: Path,
+    active_chat: ChatMeta,
+) -> None:
+    """Render Index Management section."""
+    st.markdown("#### ⚙️ Index Management")
+    
+    documents = _list_documents(raw_data_dir)
+    index_ready = _index_exists(index_dir)
+    
+    # Status row
+    col_status, col_docs = st.columns(2)
+    col_status.metric("Status", "Ready ✓" if index_ready else "Not created")
+    col_docs.metric("Documents loaded", str(len(documents)))
+    
+    # Action buttons
+    col_index, col_clear, col_rebuild = st.columns(3)
+    
+    with col_index:
+        if st.button("🔨 Index Documents", type="primary", use_container_width=True):
+            try:
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+
+                def update_progress(stage: str, current: int, total: int) -> None:
+                    if total > 0:
+                        progress_bar.progress(current / total, text=f"{stage}: {current}/{total}")
+                    else:
+                        status_text.text(stage)
+
+                status_text.text("Initializing indexing...")
+                count = ingest_to_faiss(
+                    input_dir=raw_data_dir,
+                    index_dir=index_dir,
+                    settings=settings,
+                    incremental=True,
+                    progress_callback=update_progress,
+                )
+                progress_bar.progress(1.0, text="Complete!")
+                st.session_state.index_ready = True
+                st.session_state.chat_session = None
+                st.session_state.chat_session_signature = None
+                st.success(f"Index updated. Chunks: {count}")
+            except Exception as exc:
+                st.session_state.index_ready = False
+                st.error(f"Indexing error: {exc}")
+    
+    with col_clear:
+        if st.button("🗑 Clear Index", use_container_width=True):
+            try:
+                removed = _clear_index_files(index_dir)
+                _reset_index_dependent_state()
+                st.session_state.index_ready = False
+                st.success(f"Index cleared. Files removed: {removed}")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Error clearing index: {exc}")
+    
+    with col_rebuild:
+        if st.button("🔄 Rebuild Index", use_container_width=True):
+            try:
+                _clear_index_files(index_dir)
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+
+                def update_progress(stage: str, current: int, total: int) -> None:
+                    if total > 0:
+                        progress_bar.progress(current / total, text=f"{stage}: {current}/{total}")
+                    else:
+                        status_text.text(stage)
+
+                status_text.text("Rebuilding index...")
+                count = ingest_to_faiss(
+                    input_dir=raw_data_dir,
+                    index_dir=index_dir,
+                    settings=settings,
+                    incremental=False,
+                    progress_callback=update_progress,
+                )
+                progress_bar.progress(1.0, text="Complete!")
+                st.session_state.index_ready = True
+                st.session_state.chat_session = None
+                st.session_state.chat_session_signature = None
+                st.success(f"Index rebuilt. Chunks: {count}")
+            except Exception as exc:
+                st.session_state.index_ready = False
+                st.error(f"Rebuild error: {exc}")
+    
+    # Clear documents section
+    st.markdown("**Clear all documents**")
+    clear_index = st.checkbox("Also delete FAISS index", value=True)
+    if st.button("🗑 Clear all uploaded documents", use_container_width=True):
         try:
             removed_documents = _clear_uploaded_documents(raw_data_dir)
             removed_index_files = _clear_index_files(index_dir) if clear_index else 0
@@ -504,45 +847,23 @@ def _render_upload_and_index(
             _bump_uploader_version(active_chat.id)
             st.session_state.index_ready = _index_exists(index_dir)
             st.session_state.notice = (
-                f"Удалено документов: {removed_documents}. "
-                f"Файлов индекса: {removed_index_files}."
+                f"Documents removed: {removed_documents}. Index files: {removed_index_files}."
             )
             st.rerun()
         except Exception as exc:
-            st.error(f"Ошибка очистки: {exc}")
+            st.error(f"Clear error: {exc}")
 
-    if st.button("Индексировать документы", type="primary"):
-        try:
-            progress_bar = st.progress(0)
-            status_text = st.empty()
 
-            def update_progress(stage: str, current: int, total: int) -> None:
-                if total > 0:
-                    progress_bar.progress(current / total, text=f"{stage}: {current}/{total}")
-                else:
-                    status_text.text(stage)
+# ─────────────────────────── Chat ─────────────────────────────────
 
-            status_text.text("Инициализация индексирования...")
-            count = ingest_to_faiss(
-                input_dir=raw_data_dir,
-                index_dir=index_dir,
-                settings=settings,
-                incremental=True,
-                progress_callback=update_progress,
-            )
-            progress_bar.progress(1.0, text="Завершено!")
-            st.session_state.index_ready = True
-            st.session_state.chat_session = None
-            st.session_state.chat_session_signature = None
-            st.success(f"Индекс обновлён. Chunks: {count}")
-        except Exception as exc:
-            st.session_state.index_ready = False
-            st.error(f"Ошибка индексации: {exc}")
-
-    st.markdown(
-        '<hr style="border-color:#1e2433;margin:1.2rem 0">',
-        unsafe_allow_html=True,
-    )
+def _delete_single_document(path: Path, raw_data_dir: Path, index_dir: Path) -> None:
+    _safe_unlink(path, raw_data_dir)
+    _clear_index_files(index_dir)
+    st.session_state.uploaded_files = [
+        name for name in st.session_state.uploaded_files if name != path.name
+    ]
+    _reset_index_dependent_state()
+    st.session_state.index_ready = False
 
 
 def _save_uploaded_files(uploaded_files, raw_data_dir: Path) -> None:
@@ -554,7 +875,7 @@ def _save_uploaded_files(uploaded_files, raw_data_dir: Path) -> None:
         filename = Path(uploaded_file.name).name
         suffix = Path(filename).suffix.lower()
         if suffix not in SUPPORTED_EXTENSIONS:
-            errors.append(f"{filename}: неподдерживаемый формат")
+            errors.append(f"{filename}: unsupported format")
             continue
         target = raw_data_dir / filename
         target.write_bytes(uploaded_file.getbuffer())
@@ -562,49 +883,9 @@ def _save_uploaded_files(uploaded_files, raw_data_dir: Path) -> None:
 
     if saved:
         st.session_state.uploaded_files = sorted(set(st.session_state.uploaded_files + saved))
-        st.success("Загружено: " + ", ".join(saved))
+        st.success("Loaded: " + ", ".join(saved))
     for error in errors:
         st.error(error)
-
-
-def _render_document_list(raw_data_dir: Path, index_dir: Path, active_chat: ChatMeta) -> None:
-    documents = _list_documents(raw_data_dir)
-    if not documents:
-        st.markdown(
-            '<div style="color:#5a6078;font-size:0.85rem;padding:0.5rem 0">'
-            'Загруженных документов пока нет.</div>',
-            unsafe_allow_html=True,
-        )
-        return
-
-    st.markdown("**Загруженные документы**")
-    for document_path in documents:
-        relative_path = document_path.relative_to(raw_data_dir).as_posix()
-        size_kb = document_path.stat().st_size / 1024
-        col_name, col_size, col_action = st.columns([5, 1, 1])
-        col_name.write(relative_path)
-        col_size.write(f"{size_kb:.1f} KB")
-        if col_action.button("Удалить", key=f"delete_doc_{relative_path}"):
-            try:
-                _delete_single_document(document_path, raw_data_dir, index_dir)
-                _bump_uploader_version(active_chat.id)
-                st.session_state.notice = (
-                    f"Документ удалён: {relative_path}. "
-                    "Индекс сброшен, выполните индексацию заново."
-                )
-                st.rerun()
-            except Exception as exc:
-                st.error(f"Ошибка удаления файла: {exc}")
-
-
-def _delete_single_document(path: Path, raw_data_dir: Path, index_dir: Path) -> None:
-    _safe_unlink(path, raw_data_dir)
-    _clear_index_files(index_dir)
-    st.session_state.uploaded_files = [
-        name for name in st.session_state.uploaded_files if name != path.name
-    ]
-    _reset_index_dependent_state()
-    st.session_state.index_ready = False
 
 
 # ─────────────────────────── Chat ─────────────────────────────────
