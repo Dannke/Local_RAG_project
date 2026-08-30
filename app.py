@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+import math
 import sys
 import warnings
 
@@ -29,8 +31,10 @@ from rag_project.chat_store import (
     initialize_chats,
     list_chats,
     load_messages,
+    load_sources,
     rename_chat,
     save_messages,
+    save_sources,
 )
 from rag_project.config import Settings, load_settings
 from rag_project.llm.llm_client import (
@@ -41,7 +45,8 @@ from rag_project.llm.llm_client import (
 )
 from rag_project.pipelines.chat_pipeline import ChatSession
 from rag_project.pipelines.ingest_pipeline import ingest_to_faiss
-from rag_project.retrieval.citations import build_citations
+from rag_project.models import Document, SearchResult
+from rag_project.retrieval.citations import build_citations, Citation
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 BASE_DIR = Path(__file__).parent
@@ -196,6 +201,9 @@ def _sync_active_chat(chat_root: Path, chats: list[ChatMeta]) -> ChatMeta:
             path.name for path in _list_documents(get_chat_documents_dir(active_chat.path))
         ]
         _reset_index_dependent_state(clear_messages=False)
+        # Reload persisted sources after the index-dependent reset so they
+        # survive a page refresh; they only clear on chat delete/clear.
+        st.session_state.last_context = _deserialize_results(load_sources(active_chat.path))
 
     return active_chat
 
@@ -209,6 +217,49 @@ def _settings_from_state(settings: Settings) -> Settings:
     )
 
 
+def _serialize_results(results: list[SearchResult]) -> list[dict]:
+    """Convert SearchResult objects into JSON-serializable dicts for storage."""
+    return [
+        {
+            "document": {
+                "id": result.document.id,
+                "text": result.document.text,
+                "metadata": result.document.metadata,
+            },
+            "score": result.score,
+        }
+        for result in results
+    ]
+
+
+def _deserialize_results(payload: list[dict]) -> list[SearchResult]:
+    """Rebuild SearchResult objects from the persisted dicts (see load_sources)."""
+    results: list[SearchResult] = []
+    for item in payload:
+        document = item.get("document", {})
+        results.append(
+            SearchResult(
+                document=Document(
+                    id=document.get("id", ""),
+                    text=document.get("text", ""),
+                    metadata=document.get("metadata", {}),
+                ),
+                score=item.get("score", 0.0),
+            )
+        )
+    return results
+
+
+def _persist_sources(chat_path: Path, results: list[SearchResult]) -> None:
+    """Save retrieved sources to disk so they survive a page refresh."""
+    save_sources(chat_path, _serialize_results(results))
+
+
+def _clear_persisted_sources(chat_path: Path) -> None:
+    """Remove the persisted sources for a chat (used by chat clear/reset)."""
+    save_sources(chat_path, [])
+
+
 # ─────────────────────────── Pages ────────────────────────────────
 
 def _render_chat_page(
@@ -218,7 +269,8 @@ def _render_chat_page(
     chats: list[ChatMeta],
     active_chat: ChatMeta,
 ) -> None:
-    left_panel, center_panel, right_panel = st.columns([1, 4.67, 1], gap="medium")
+    # Column weights: left (chat list) 15% · center (chat) 60% · right (sources) 25%
+    left_panel, center_panel, right_panel = st.columns([1, 4, 1.67], gap="medium")
 
     with left_panel:
         _render_left_panel(chat_root, chats, active_chat)
@@ -419,6 +471,7 @@ def _render_left_panel(
         st.session_state.messages = []
         st.session_state.last_context = []
         save_messages(active_chat.path, [])
+        _clear_persisted_sources(active_chat.path)
         st.rerun()
 
 
@@ -946,6 +999,7 @@ def _render_center_panel(settings: Settings, index_dir: Path, active_chat: ChatM
         return
 
     st.session_state.last_context = response.results
+    _persist_sources(active_chat.path, response.results)
 
     with st.chat_message("assistant", avatar=_ASSISTANT_AVATAR):
         answer_box = st.empty()
@@ -1008,53 +1062,155 @@ def _show_llm_error(title: str, exc: Exception, chat_dir: Path) -> None:
 
 # ─────────────────────────── Sources ──────────────────────────────
 
-def _render_right_panel(results) -> None:
-    """RIGHT PANEL: Citations panel (retrieved chunks, source metadata, PDF page numbers, relevance scores)."""
-    st.markdown("### Источники")
-    if not results:
-        st.markdown(
-            '<div style="color:#5a6078;font-size:0.85rem">'
-            'Источники не найдены.</div>',
-            unsafe_allow_html=True,
+# Relevance thresholds and their styling (display only — does not affect retrieval).
+_RELEVANCE_TIERS = (
+    (0.80, "Excellent Match", "#66bb6a"),  # green
+    (0.60, "Good Match", "#9ccc65"),       # light green
+    (0.40, "Moderate Match", "#ffa726"),   # amber
+    (0.00, "Weak Match", "#ef5350"),       # red
+)
+
+
+def _relevance_for(score: float) -> tuple[int, str, str] | None:
+    """Map a raw score to a (percent, label, color) triple for display only.
+
+    Returns None when the score is not a usable number (None, NaN, non-numeric),
+    so the relevance section can be hidden entirely. The backend score itself
+    is never modified — only displayed and clamped to a 0–100% bar.
+    """
+    try:
+        numeric = float(score)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(numeric) or math.isinf(numeric):
+        return None
+    percent = max(0, min(int(round(numeric * 100)), 100))
+    for threshold, label, color in _RELEVANCE_TIERS:
+        if numeric >= threshold:
+            return percent, label, color
+    return percent, _RELEVANCE_TIERS[-1][1], _RELEVANCE_TIERS[-1][2]
+
+
+def _citation_filename(source: str) -> str:
+    """Return a readable filename from a citation source path/id."""
+    name = Path(source).name if source else source
+    return name or "Unknown source"
+
+
+def _citation_preview(text: str, limit: int = 260) -> str:
+    """Short preview of the chunk text for the card."""
+    if not text:
+        return ""
+    snippet = " ".join(text.split())  # collapse whitespace for compactness
+    if len(snippet) <= limit:
+        return snippet
+    return snippet[:limit].rstrip() + "…"
+
+
+def _render_sources_header(total: int) -> None:
+    """Section 1 — structured panel header with a total-sources counter."""
+    st.markdown(
+        f'<div class="citation-panel-header">'
+        f'<h3 class="citation-panel-title">📚 Sources</h3>'
+        f'<p class="citation-panel-subtitle">Total Sources: <b>{total}</b></p>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _render_sources_empty() -> None:
+    """Section 7 — clean empty state when nothing has been retrieved."""
+    st.markdown(
+        '<div class="citation-empty">'
+        '<div class="citation-empty-icon">📚</div>'
+        '<div class="citation-empty-title">No sources available.</div>'
+        '<div class="citation-empty-text">'
+        'Ask a question to view retrieved citations.'
+        '</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _render_citation_card(index: int, citation: Citation) -> None:
+    """Sections 2–6 — a single citation card.
+
+    Layout: source number + filename (2/3), file type & page chips (3),
+    optional relevance bar (4), chunk preview (5) and an expander with
+    the full text (6). Display only — no retrieval or score changes.
+    """
+    filename = _citation_filename(citation.source)
+    file_ext = Path(filename).suffix.lower()
+    file_type = _get_file_type(file_ext)
+    file_icon = _get_file_icon(file_ext)
+    has_page = bool(citation.page)
+    page_value = citation.page if has_page else None
+
+    relevance = _relevance_for(citation.score)
+
+    # Card header + document information (filename, type, page chip).
+    chips = [f'<span class="citation-chip"><b>{file_type}</b></span>']
+    if has_page:
+        chips.append(
+            f'<span class="citation-chip">📄 <b>Page:</b> {page_value}</span>'
         )
+    chips.append(
+        f'<span class="citation-chip"><b>Chunk:</b> {citation.chunk_index}</span>'
+    )
+
+    # Optional relevance display (Section 4) — hidden when score is missing.
+    relevance_block = ""
+    if relevance is not None:
+        percent, label, color = relevance
+        relevance_block = (
+            f'<div class="citation-relevance">'
+            f'<span class="citation-relevance-label">Relevance</span>'
+            f'<span class="citation-relevance-bar">'
+            f'<span class="citation-relevance-fill" '
+            f'style="width:{percent}%;background:{color};"></span>'
+            f'</span>'
+            f'<span class="citation-relevance-value" style="color:{color};">'
+            f'{percent}% · {label}</span>'
+            f'</div>'
+        )
+
+    preview = _citation_preview(citation.text)
+
+    st.markdown(
+        f'<div class="citation-card">'
+        f'<div class="citation-card-head">'
+        f'<span class="citation-source-badge">Source #{index}</span>'
+        f'<span class="citation-source-name">{file_icon} '
+        f'{html.escape(filename)}</span>'
+        f'</div>'
+        f'<div class="citation-meta-row">{"".join(chips)}</div>'
+        f'{relevance_block}'
+        f'<div class="citation-preview">{html.escape(preview)}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Section 6 — expandable full chunk text.
+    with st.expander("Show Full Chunk"):
+        st.write(citation.text)
+
+
+def _render_right_panel(results) -> None:
+    """RIGHT PANEL: professional citation explorer.
+
+    Pure UI layer — reads the already-built citations and renders them as
+    cards. Does not touch retrieval, reranking, scoring or citation logic.
+    """
+    citations = build_citations(results)
+
+    _render_sources_header(len(citations))
+
+    if not citations:
+        _render_sources_empty()
         return
 
-    for index, citation in enumerate(build_citations(results), start=1):
-        page = citation.page or "n/a"
-        score_bar = min(int(citation.score * 100), 100)
-        if score_bar > 70:
-            score_color = "#66bb6a"
-        elif score_bar > 40:
-            score_color = "#ffa726"
-        else:
-            score_color = "#ef5350"
-
-        st.markdown(
-            f'<div style="background:#1a1f2e;border:1px solid #2a3040;'
-            f'border-radius:10px;padding:14px 18px;margin-bottom:10px;">'
-            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
-            f'<span style="background:rgba(124,77,255,0.13);color:#7C4DFF;'
-            f'font-size:0.75rem;font-weight:600;padding:2px 8px;border-radius:6px;">'
-            f'{citation.label}</span>'
-            f'<span style="font-weight:500;font-size:0.9rem;">{citation.source}</span>'
-            f'</div>'
-            f'<div style="display:flex;gap:16px;font-size:0.78rem;color:#8b92a8;'
-            f'margin-bottom:8px;">'
-            f'<span>Page: {page}</span>'
-            f'<span>Chunk: {citation.chunk_index}</span>'
-            f'<span>Relevance: <b style="color:{score_color}">'
-            f'{citation.score:.4f}</b></span>'
-            f'</div>'
-            f'<div style="background:#0e1117;border-radius:6px;padding:8px 12px;'
-            f'font-size:0.82rem;color:#b0b8c8;word-break:break-word;">'
-            f'{citation.text[:300]}{"…" if len(citation.text) > 300 else ""}'
-            f'</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-        with st.expander("Показать полный фрагмент"):
-            st.write(citation.text)
+    for index, citation in enumerate(citations, start=1):
+        _render_citation_card(index, citation)
 
 
 # ─────────────────────────── Utilities ────────────────────────────

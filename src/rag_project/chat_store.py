@@ -70,6 +70,7 @@ def create_chat(
     )
     _write_meta(meta)
     save_messages(chat_dir, [])
+    save_sources(chat_dir, [])
     return meta
 
 
@@ -124,6 +125,62 @@ def save_messages(chat_dir: str | Path, messages: list[dict[str, str]]) -> None:
     )
 
 
+def load_sources(chat_dir: str | Path) -> list[dict[str, Any]]:
+    """Load the persisted retrieved sources for a chat.
+
+    Each entry is ``{"document": {...}, "score": float}`` and is rebuilt into
+    ``SearchResult`` objects by the UI layer. Returns an empty list when no
+    sources file exists yet (e.g. a fresh chat before any question is asked).
+    """
+    path = get_chat_sources_path(chat_dir)
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, list):
+        return []
+
+    sources: list[dict[str, Any]] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        document = item.get("document")
+        if not isinstance(document, dict):
+            continue
+        doc_id = document.get("id")
+        text = document.get("text")
+        if not isinstance(doc_id, str) or not isinstance(text, str):
+            continue
+        metadata = document.get("metadata") if isinstance(document.get("metadata"), dict) else {}
+        score = item.get("score", 0.0)
+        try:
+            score_value = float(score)
+        except (TypeError, ValueError):
+            score_value = 0.0
+        sources.append(
+            {
+                "document": {"id": doc_id, "text": text, "metadata": metadata},
+                "score": score_value,
+            }
+        )
+    return sources
+
+
+def save_sources(chat_dir: str | Path, sources: list[dict[str, Any]]) -> None:
+    """Persist retrieved sources for a chat as JSON.
+
+    Each source is expected to be ``{"document": {...}, "score": float}``.
+    """
+    path = get_chat_sources_path(chat_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(sources, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
 def get_chat_documents_dir(chat_dir: str | Path) -> Path:
     return Path(chat_dir) / "documents"
 
@@ -136,6 +193,10 @@ def get_chat_messages_path(chat_dir: str | Path) -> Path:
     return Path(chat_dir) / "messages.json"
 
 
+def get_chat_sources_path(chat_dir: str | Path) -> Path:
+    return Path(chat_dir) / "sources.json"
+
+
 def get_chat_meta_path(chat_dir: str | Path) -> Path:
     return Path(chat_dir) / "meta.json"
 
@@ -146,6 +207,9 @@ def ensure_chat_layout(chat_dir: str | Path) -> None:
     messages_path = get_chat_messages_path(chat_dir)
     if not messages_path.exists():
         save_messages(chat_dir, [])
+    sources_path = get_chat_sources_path(chat_dir)
+    if not sources_path.exists():
+        save_sources(chat_dir, [])
 
 
 def _next_chat_id(root: Path) -> str:

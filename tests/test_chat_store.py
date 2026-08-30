@@ -11,11 +11,14 @@ from rag_project.chat_store import (
     delete_chat,
     get_chat_documents_dir,
     get_chat_index_dir,
+    get_chat_sources_path,
     initialize_chats,
     list_chats,
     load_messages,
+    load_sources,
     rename_chat,
     save_messages,
+    save_sources,
 )
 
 
@@ -70,6 +73,62 @@ class ChatStoreTest(unittest.TestCase):
             save_messages(chat.path, messages)
 
             self.assertEqual(load_messages(chat.path), messages)
+
+    def test_sources_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "chats"
+            chat = create_chat(root)
+            sources = [
+                {
+                    "document": {
+                        "id": "d1",
+                        "text": "Segmentation pipeline applies perspective correction.",
+                        "metadata": {"relative_path": "thesis.pdf", "page_label": "14"},
+                    },
+                    "score": 0.92,
+                },
+                {
+                    "document": {
+                        "id": "d2",
+                        "text": "Training hyperparameters for the reranker.",
+                        "metadata": {"relative_path": "notes.docx"},
+                    },
+                    "score": 0.55,
+                },
+            ]
+
+            save_sources(chat.path, sources)
+
+            self.assertEqual(load_sources(chat.path), sources)
+            self.assertTrue(get_chat_sources_path(chat.path).exists())
+
+    def test_load_sources_returns_empty_when_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "chats"
+            chat = create_chat(root)
+            # Delete the sources file created by create_chat via ensure_chat_layout.
+            get_chat_sources_path(chat.path).unlink()
+
+            self.assertEqual(load_sources(chat.path), [])
+
+    def test_save_empty_sources_clears_previous(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "chats"
+            chat = create_chat(root)
+            save_sources(chat.path, [
+                {"document": {"id": "d1", "text": "x", "metadata": {}}, "score": 0.9},
+            ])
+            self.assertEqual(len(load_sources(chat.path)), 1)
+
+            # "Clear chat" overwrites with an empty list.
+            save_sources(chat.path, [])
+            self.assertEqual(load_sources(chat.path), [])
+
+    def test_ensure_chat_layout_creates_sources_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "chats"
+            chat = create_chat(root)
+            self.assertTrue(get_chat_sources_path(chat.path).exists())
 
     def test_delete_chat_removes_directory_safely(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
