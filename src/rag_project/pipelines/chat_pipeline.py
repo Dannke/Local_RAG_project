@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,10 @@ from rag_project.retrieval.retriever import Retriever
 from rag_project.vectorstores.faiss_store import FaissVectorStore
 
 logger = get_logger(__name__)
+
+
+def _now_ms() -> int:
+    return int(time.monotonic() * 1000)
 
 
 @dataclass(frozen=True)
@@ -129,5 +134,19 @@ class ChatSession:
     def _search(self, question: str, top_k: int | None = None) -> list[SearchResult]:
         final_top_k = top_k or self.default_top_k
         candidate_count = max(final_top_k, self.rerank_candidates)
+        start = _now_ms()
         candidates = self.retriever.search(question, top_k=candidate_count)
-        return self.reranker.rerank(question, candidates, top_k=final_top_k)
+        retrieval_ms = _now_ms() - start
+        reranked = self.reranker.rerank(question, candidates, top_k=final_top_k)
+        logger.info(
+            "retrieval",
+            extra={
+                "question": question,
+                "candidates_before_rerank": len(candidates),
+                "final_top_k": final_top_k,
+                "retrieved": len(reranked),
+                "retrieval_ms": retrieval_ms,
+                "top_scores": [round(result.score, 4) for result in reranked[:5]],
+            },
+        )
+        return reranked

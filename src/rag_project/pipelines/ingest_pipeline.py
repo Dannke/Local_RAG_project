@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
@@ -11,6 +12,7 @@ from rag_project.embeddings.base import EmbeddingModel
 from rag_project.embeddings.sentence_transformers import SentenceTransformerEmbeddingModel
 from rag_project.ingestion.chunking import chunk_documents
 from rag_project.ingestion.loaders import load_document_file, load_documents
+from rag_project.logging_setup import get_logger
 from rag_project.models import Document
 from rag_project.pipelines.index_manifest import (
     IndexManifest,
@@ -21,6 +23,12 @@ from rag_project.pipelines.index_manifest import (
 from rag_project.retrieval.retriever import Retriever
 from rag_project.vectorstores.base import VectorStore
 from rag_project.vectorstores.faiss_store import FaissVectorStore
+
+logger = get_logger(__name__)
+
+
+def _now_ms() -> int:
+    return int(time.monotonic() * 1000)
 
 
 def build_retriever(
@@ -72,9 +80,40 @@ def ingest_to_faiss(
         Path(index_dir) if index_dir is not None else active_settings.vector_store_dir
     )
 
-    if incremental:
-        return _ingest_incremental(source_dir, target_index_dir, active_settings, progress_callback)
-    return _ingest_full(source_dir, target_index_dir, active_settings, progress_callback)
+    start = _now_ms()
+    logger.info(
+        "ingest_start",
+        extra={
+            "source_dir": str(source_dir),
+            "index_dir": str(target_index_dir),
+            "incremental": incremental,
+        },
+    )
+    try:
+        if incremental:
+            count = _ingest_incremental(
+                source_dir, target_index_dir, active_settings, progress_callback
+            )
+        else:
+            count = _ingest_full(
+                source_dir, target_index_dir, active_settings, progress_callback
+            )
+    except Exception as exc:
+        logger.error(
+            "ingest_error",
+            extra={
+                "error": exc.__class__.__name__,
+                "message": str(exc),
+                "elapsed_ms": _now_ms() - start,
+            },
+            exc_info=True,
+        )
+        raise
+    logger.info(
+        "ingest_completed",
+        extra={"chunks": count, "elapsed_ms": _now_ms() - start, "success": True},
+    )
+    return count
 
 
 def _ingest_full(

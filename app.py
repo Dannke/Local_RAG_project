@@ -37,6 +37,7 @@ from rag_project.chat_store import (
     save_sources,
 )
 from rag_project.config import Settings, load_settings
+from rag_project.logging_setup import setup_logging
 from rag_project.llm.llm_client import (
     InvalidModelError,
     LLMClientError,
@@ -47,6 +48,8 @@ from rag_project.pipelines.chat_pipeline import ChatSession
 from rag_project.pipelines.ingest_pipeline import delete_document_from_index, ingest_to_faiss
 from rag_project.models import Document, SearchResult
 from rag_project.retrieval.citations import build_citations, Citation
+
+setup_logging()
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 BASE_DIR = Path(__file__).parent
@@ -910,12 +913,20 @@ def _render_index_management(
 # ─────────────────────────── Chat ─────────────────────────────────
 
 def _delete_single_document(path: Path, raw_data_dir: Path, index_dir: Path) -> None:
-    _safe_unlink(path, raw_data_dir)
+    try:
+        _safe_unlink(path, raw_data_dir)
+    except Exception as exc:
+        st.error(f"Ошибка удаления файла: {exc}")
+        return
     # Remove only this document's vectors from the index (no full rebuild).
     relative_path = path.relative_to(raw_data_dir).as_posix()
-    removed = delete_document_from_index(index_dir, relative_path)
-    if removed:
-        st.session_state.index_ready = _index_exists(index_dir)
+    try:
+        removed = delete_document_from_index(index_dir, relative_path)
+        if removed:
+            st.session_state.index_ready = _index_exists(index_dir)
+    except Exception as exc:
+        st.error(f"Ошибка удаления из индекса: {exc}")
+        return
     st.session_state.uploaded_files = [
         name for name in st.session_state.uploaded_files if name != path.name
     ]
@@ -1036,11 +1047,19 @@ def _get_chat_session(settings: Settings, index_dir: Path) -> ChatSession:
         st.session_state.chat_session is None
         or st.session_state.chat_session_signature != signature
     ):
-        st.session_state.chat_session = ChatSession.from_faiss_index(
-            index_dir=index_dir,
-            settings=settings,
-        )
-        st.session_state.chat_session_signature = signature
+        try:
+            st.session_state.chat_session = ChatSession.from_faiss_index(
+                index_dir=index_dir,
+                settings=settings,
+            )
+            st.session_state.chat_session_signature = signature
+        except FileNotFoundError as exc:
+            raise RuntimeError("Индекс не найден. Сначала выполните индексацию.") from exc
+        except RuntimeError as exc:
+            # Likely missing dependency or model download failure
+            raise RuntimeError(f"Ошибка инициализации компонентов: {exc}") from exc
+        except Exception as exc:
+            raise RuntimeError(f"Не удалось создать сессию чата: {exc}") from exc
     return st.session_state.chat_session
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Iterator, Sequence
 from typing import Any
 
@@ -112,6 +113,7 @@ class OpenRouterClient:
         user_prompt = build_user_prompt(question, limited_chunks)
         _log_prompt_stats(self.model, context_chunks, limited_chunks, user_prompt)
 
+        start = _now_ms()
         try:
             completion = self.client.chat.completions.create(
                 model=self.model,
@@ -122,11 +124,30 @@ class OpenRouterClient:
                 temperature=self.temperature,
             )
         except Exception as exc:
-            raise _map_provider_error(exc) from exc
+            mapped = _map_provider_error(exc)
+            logger.warning(
+                "llm_error",
+                extra={
+                    "model": self.model,
+                    "latency_ms": _now_ms() - start,
+                    "error": mapped.__class__.__name__,
+                },
+            )
+            raise mapped from exc
 
         answer = _extract_answer_text(completion)
         if not answer:
             raise EmptyLLMResponseError("OpenRouter returned an empty response.")
+
+        logger.info(
+            "llm_completed",
+            extra={
+                "model": self.model,
+                "latency_ms": _now_ms() - start,
+                "success": True,
+                **(_extract_usage(completion)),
+            },
+        )
         return answer
 
     def stream_generate_answer(self, question: str, context_chunks: list[str]) -> Iterator[str]:
@@ -135,6 +156,7 @@ class OpenRouterClient:
         user_prompt = build_user_prompt(question, limited_chunks)
         _log_prompt_stats(self.model, context_chunks, limited_chunks, user_prompt)
 
+        start = _now_ms()
         try:
             stream = self.client.chat.completions.create(
                 model=self.model,
@@ -146,18 +168,49 @@ class OpenRouterClient:
                 stream=True,
             )
         except Exception as exc:
-            raise _map_provider_error(exc) from exc
+            mapped = _map_provider_error(exc)
+            logger.warning(
+                "llm_error",
+                extra={
+                    "model": self.model,
+                    "latency_ms": _now_ms() - start,
+                    "error": mapped.__class__.__name__,
+                },
+            )
+            raise mapped from exc
 
         emitted = False
+        usage: dict = {}
         try:
             for chunk in stream:
                 text = _extract_stream_delta(chunk)
                 if text:
                     emitted = True
                     yield text
+                if getattr(chunk, "usage", None) is not None:
+                    usage = _extract_stream_usage(chunk)
         except Exception as exc:
-            raise _map_provider_error(exc) from exc
+            mapped = _map_provider_error(exc)
+            logger.warning(
+                "llm_error",
+                extra={
+                    "model": self.model,
+                    "latency_ms": _now_ms() - start,
+                    "error": mapped.__class__.__name__,
+                },
+            )
+            raise mapped from exc
 
+        logger.info(
+            "llm_stream_completed",
+            extra={
+                "model": self.model,
+                "latency_ms": _now_ms() - start,
+                "success": emitted,
+                "empty": not emitted,
+                **usage,
+            },
+        )
         if not emitted:
             raise EmptyLLMResponseError("OpenRouter returned an empty streaming response.")
 
@@ -242,10 +295,49 @@ def _log_prompt_stats(
     limited_chunks: Sequence[str],
     user_prompt: str,
 ) -> None:
-    logger.info("Using OpenRouter model: %s", model)
-    logger.info("Retrieved chunks found: %s", len(context_chunks))
-    logger.info("Chunks sent after context limit: %s", len(limited_chunks))
-    logger.info("Prompt length: %s chars", len(SYSTEM_PROMPT) + len(user_prompt))
+    logger.info(
+        "llm_prompt",
+        extra={
+            "model": model,
+            "chunks_retrieved": len(context_chunks),
+            "chunks_after_limit": len(limited_chunks),
+            "user_prompt_chars": len(user_prompt),
+        },
+    )
+
+
+def _now_ms() -> int:
+    return int(time.monotonic() * 1000)
+
+
+def _extract_usage(completion: Any) -> dict:
+    """Extract token usage from a (non-stream) completion if present."""
+    usage = getattr(completion, "usage", None)
+    if usage is None:
+        return {}
+    try:
+        return {
+            "prompt_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
+            "completion_tokens": int(getattr(usage, "completion_tokens", 0) or 0),
+            "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
+        }
+    except (AttributeError, TypeError, ValueError):
+        return {}
+
+
+def _extract_stream_usage(chunk: Any) -> dict:
+    """Extract token usage from a final streamed chunk if present."""
+    usage = getattr(chunk, "usage", None)
+    if usage is None:
+        return {}
+    try:
+        return {
+            "prompt_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
+            "completion_tokens": int(getattr(usage, "completion_tokens", 0) or 0),
+            "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
+        }
+    except (AttributeError, TypeError, ValueError):
+        return {}
 
 
 def _build_openai_client(api_key: str, base_url: str, timeout_seconds: int) -> Any:

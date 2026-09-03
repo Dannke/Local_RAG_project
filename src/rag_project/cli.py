@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 
 from rag_project.llm.llm_client import LLMClientError
+from rag_project.logging_setup import setup_logging
 from rag_project.pipelines.chat_pipeline import ChatSession
 from rag_project.pipelines.ingest_pipeline import ingest_to_faiss
 from rag_project.pipelines.search_pipeline import search_index
@@ -31,8 +32,9 @@ def main(argv: list[str] | None = None) -> int:
     chat_parser.add_argument("--verbose", action="store_true")
 
     args = parser.parse_args(argv)
-    if getattr(args, "verbose", False):
-        logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+    setup_logging(
+        console_level=logging.DEBUG if getattr(args, "verbose", False) else logging.WARNING
+    )
 
     if args.command == "ingest":
         indexed_count = ingest_to_faiss(input_dir=args.data, index_dir=args.index)
