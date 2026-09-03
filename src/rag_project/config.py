@@ -53,6 +53,8 @@ class Settings:
     rerank_candidates: int
     chunk_size: int
     chunk_overlap: int
+    rate_limit_max_requests: int
+    rate_limit_window_seconds: int
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
@@ -90,6 +92,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         rerank_candidates=_env_int(source, "RERANK_CANDIDATES", 20),
         chunk_size=_env_int(source, "RAG_CHUNK_SIZE", 800),
         chunk_overlap=_env_int(source, "RAG_CHUNK_OVERLAP", 120),
+        rate_limit_max_requests=_env_int(source, "RATE_LIMIT_MAX_REQUESTS", 0),
+        rate_limit_window_seconds=_env_int(source, "RATE_LIMIT_WINDOW_SECONDS", 60),
     )
 
 

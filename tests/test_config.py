@@ -33,3 +33,5 @@ class ConfigTests(unittest.TestCase):
         self.assertFalse(settings.use_reranker)
         self.assertEqual(settings.reranker_model, "test-reranker")
         self.assertEqual(settings.rerank_candidates, 9)
+        self.assertEqual(settings.rate_limit_max_requests, 0)
+        self.assertEqual(settings.rate_limit_window_seconds, 60)

@@ -54,6 +54,7 @@ class ChatSession:
         index_dir: str | Path | None = None,
         settings: Settings | None = None,
         generator: LLM | None = None,
+        rate_limit_key: str | None = None,
     ) -> ChatSession:
         active_settings = settings or load_settings()
         store = FaissVectorStore.load_from_disk(index_dir or active_settings.vector_store_dir)
@@ -73,7 +74,8 @@ class ChatSession:
             reranker = NoOpReranker()
         return cls(
             retriever=retriever,
-            generator=generator or OpenRouterGenerator(settings=active_settings),
+            generator=generator
+            or OpenRouterGenerator(settings=active_settings, rate_limit_key=rate_limit_key),
             default_top_k=active_settings.top_k,
             reranker=reranker,
             rerank_candidates=getattr(active_settings, 'rerank_candidates', 20),

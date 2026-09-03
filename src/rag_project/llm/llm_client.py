@@ -7,6 +7,7 @@ from collections.abc import Iterator, Sequence
 from typing import Any
 
 from rag_project.config import Settings, load_settings
+from rag_project.rate_limit import RateLimiter, RateLimitExceededError
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,8 @@ class OpenRouterClient:
         temperature: float = 0.2,
         max_context_chars: int = 12_000,
         client: Any | None = None,
+        rate_limiter: RateLimiter | None = None,
+        rate_limit_key: str | None = None,
     ) -> None:
         if not api_key:
             raise MissingAPIKeyError("OPENROUTER_API_KEY is not set. Add it to .env.")
@@ -60,19 +63,37 @@ class OpenRouterClient:
         self.model = model
         self.temperature = temperature
         self.max_context_chars = max_context_chars
+        self.rate_limiter = rate_limiter
+        self.rate_limit_key = rate_limit_key
         self.client = client or _build_openai_client(
             api_key=api_key,
             base_url=base_url,
             timeout_seconds=timeout_seconds,
         )
 
+    def _check_rate_limit(self) -> None:
+        if self.rate_limiter is None:
+            return
+        try:
+            self.rate_limiter.check(self.rate_limit_key or "default")
+        except RateLimitExceededError as exc:
+            logger.warning("LLM request rejected by rate limiter: %s", exc)
+            raise
+
     @classmethod
     def from_settings(
         cls,
         settings: Settings | None = None,
         client: Any | None = None,
+        rate_limit_key: str | None = None,
     ) -> OpenRouterClient:
         active_settings = settings or load_settings()
+        rate_limiter = None
+        if active_settings.rate_limit_max_requests > 0:
+            rate_limiter = RateLimiter(
+                max_requests=active_settings.rate_limit_max_requests,
+                window_seconds=active_settings.rate_limit_window_seconds,
+            )
         return cls(
             api_key=active_settings.openrouter_api_key or "",
             model=active_settings.openrouter_model,
@@ -81,9 +102,12 @@ class OpenRouterClient:
             temperature=active_settings.temperature,
             max_context_chars=active_settings.max_context_chars,
             client=client,
+            rate_limiter=rate_limiter,
+            rate_limit_key=rate_limit_key,
         )
 
     def generate_answer(self, question: str, context_chunks: list[str]) -> str:
+        self._check_rate_limit()
         limited_chunks = limit_context_chunks(context_chunks, self.max_context_chars)
         user_prompt = build_user_prompt(question, limited_chunks)
         _log_prompt_stats(self.model, context_chunks, limited_chunks, user_prompt)
@@ -106,6 +130,7 @@ class OpenRouterClient:
         return answer
 
     def stream_generate_answer(self, question: str, context_chunks: list[str]) -> Iterator[str]:
+        self._check_rate_limit()
         limited_chunks = limit_context_chunks(context_chunks, self.max_context_chars)
         user_prompt = build_user_prompt(question, limited_chunks)
         _log_prompt_stats(self.model, context_chunks, limited_chunks, user_prompt)
@@ -138,23 +163,35 @@ class OpenRouterClient:
 
 
 class OpenRouterGenerator:
-    """Adapter used by the chat pipeline."""
+    """Adapter used by the chat pipeline.
+
+    The underlying :class:`OpenRouterClient` is created lazily and cached so
+    that a rate limiter (per session) is shared across all calls of the same
+    generator instance.
+    """
 
     def __init__(
         self,
         settings: Settings | None = None,
         client: OpenRouterClient | None = None,
+        rate_limit_key: str | None = None,
     ) -> None:
         self.settings = settings
-        self.client = client
+        self._client = client
+        self.rate_limit_key = rate_limit_key
+
+    def _get_client(self) -> OpenRouterClient:
+        if self._client is None:
+            self._client = OpenRouterClient.from_settings(
+                self.settings, rate_limit_key=self.rate_limit_key
+            )
+        return self._client
 
     def generate(self, question: str, context_chunks: Sequence[str]) -> str:
-        client = self.client or OpenRouterClient.from_settings(self.settings)
-        return client.generate_answer(question, list(context_chunks))
+        return self._get_client().generate_answer(question, list(context_chunks))
 
     def stream(self, question: str, context_chunks: Sequence[str]) -> Iterator[str]:
-        client = self.client or OpenRouterClient.from_settings(self.settings)
-        yield from client.stream_generate_answer(question, list(context_chunks))
+        yield from self._get_client().stream_generate_answer(question, list(context_chunks))
 
 
 def generate_answer(question: str, context_chunks: list[str]) -> str:
