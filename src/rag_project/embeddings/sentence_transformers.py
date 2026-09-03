@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 
 class SentenceTransformerEmbeddingModel:
@@ -25,3 +25,15 @@ class SentenceTransformerEmbeddingModel:
             show_progress_bar=False,
         )
         return vectors.astype("float32").tolist()
+
+    def token_counter(self) -> Callable[[str], int]:
+        """Return a callable that counts tokens the way the model sees text.
+
+        Uses the tokenizer of the same tokenizer the model was built with.
+        """
+        def count(text: str) -> int:
+            if not text:
+                return 0
+            return len(self._model.tokenizer.encode(text))
+
+        return count

@@ -33,11 +33,16 @@ def build_retriever(
     source_dir = Path(input_dir) if input_dir is not None else active_settings.raw_data_dir
 
     documents = load_documents(source_dir)
-    chunks = _chunk_loaded_documents(documents, active_settings)
+    model = embedding_model or SentenceTransformerEmbeddingModel(active_settings.embedding_model)
+    token_counter = getattr(model, "token_counter", None)
+    chunks = _chunk_loaded_documents(
+        documents,
+        active_settings,
+        token_counter() if token_counter is not None else None,
+    )
 
     retriever = Retriever(
-        embedding_model=embedding_model
-        or SentenceTransformerEmbeddingModel(active_settings.embedding_model),
+        embedding_model=model,
         vector_store=vector_store or FaissVectorStore(active_settings.vector_store_dir),
     )
     retriever.index(chunks)
@@ -86,7 +91,8 @@ def _ingest_full(
     if progress_callback:
         progress_callback("Разделение на фрагменты", 0, 1)
     
-    chunks = _chunk_loaded_documents(documents, settings)
+    embedding_model = SentenceTransformerEmbeddingModel(settings.embedding_model)
+    chunks = _chunk_loaded_documents(documents, settings, embedding_model.token_counter())
     if not chunks:
         raise RuntimeError("No supported documents were found to index.")
 
@@ -95,7 +101,7 @@ def _ingest_full(
     
     store = FaissVectorStore(index_dir)
     retriever = Retriever(
-        embedding_model=SentenceTransformerEmbeddingModel(settings.embedding_model),
+        embedding_model=embedding_model,
         vector_store=store,
     )
     
@@ -149,7 +155,8 @@ def _ingest_incremental(
     if progress_callback:
         progress_callback("Разделение на фрагменты", 0, 1)
     
-    chunks = _chunk_loaded_documents(documents, settings)
+    embedding_model = SentenceTransformerEmbeddingModel(settings.embedding_model)
+    chunks = _chunk_loaded_documents(documents, settings, embedding_model.token_counter())
     if not chunks:
         return FaissVectorStore.load_from_disk(index_dir).count()
 
@@ -158,7 +165,7 @@ def _ingest_incremental(
     
     store = FaissVectorStore.load_from_disk(index_dir)
     retriever = Retriever(
-        embedding_model=SentenceTransformerEmbeddingModel(settings.embedding_model),
+        embedding_model=embedding_model,
         vector_store=store,
     )
     
@@ -208,11 +215,16 @@ def delete_document_from_index(index_dir: str | Path, relative_path: str) -> int
     return removed
 
 
-def _chunk_loaded_documents(documents: list[Document], settings: Settings) -> list[Document]:
+def _chunk_loaded_documents(
+    documents: list[Document],
+    settings: Settings,
+    token_counter: Callable[[str], int] | None = None,
+) -> list[Document]:
     return chunk_documents(
         documents,
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,
+        token_counter=token_counter,
     )
 
 
