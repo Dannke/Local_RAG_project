@@ -1,0 +1,36 @@
+services:
+  rag-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-app
+    restart: unless-stopped
+    # .env lives on the VPS, chmod 600, NOT in the repo.
+    # Keys are read at container start; changes require `docker compose up -d` again.
+    env_file:
+      - .env
+    environment:
+      # Disable Streamlit telemetry and email prompts
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+      RAG_PROJECT_ROOT: /app
+    # Persist chat sessions / documents / indexes across container restarts.
+    # Named volume survives `docker compose down` (but not `down -v`).
+    volumes:
+      - rag_data:/app/data
+      # Optional: mount HF cache so models download once, not per container
+      - hf_cache:/data/.cache/huggingface:z
+    # SECURITY: by default we do NOT publish a public port.
+    # Access the app ONLY via Tailscale / Cloudflare Tunnel (recommended),
+    # or uncomment the line below to bind to a specific interface / port.
+    # ports:
+    #   - "127.0.0.1:8501:8501"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  rag_data:
+  hf_cache:
