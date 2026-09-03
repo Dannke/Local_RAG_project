@@ -44,7 +44,7 @@ from rag_project.llm.llm_client import (
     MissingAPIKeyError,
 )
 from rag_project.pipelines.chat_pipeline import ChatSession
-from rag_project.pipelines.ingest_pipeline import ingest_to_faiss
+from rag_project.pipelines.ingest_pipeline import delete_document_from_index, ingest_to_faiss
 from rag_project.models import Document, SearchResult
 from rag_project.retrieval.citations import build_citations, Citation
 
@@ -774,7 +774,7 @@ def _render_document_card(
                     _bump_uploader_version(active_chat.id)
                     st.session_state.notice = (
                         f"Document deleted: {relative_path}. "
-                        "Index reset, run indexing again."
+                        "Its vectors were removed from the index."
                     )
                     st.rerun()
                 except Exception as exc:
@@ -911,12 +911,15 @@ def _render_index_management(
 
 def _delete_single_document(path: Path, raw_data_dir: Path, index_dir: Path) -> None:
     _safe_unlink(path, raw_data_dir)
-    _clear_index_files(index_dir)
+    # Remove only this document's vectors from the index (no full rebuild).
+    relative_path = path.relative_to(raw_data_dir).as_posix()
+    removed = delete_document_from_index(index_dir, relative_path)
+    if removed:
+        st.session_state.index_ready = _index_exists(index_dir)
     st.session_state.uploaded_files = [
         name for name in st.session_state.uploaded_files if name != path.name
     ]
     _reset_index_dependent_state()
-    st.session_state.index_ready = False
 
 
 def _save_uploaded_files(uploaded_files, raw_data_dir: Path) -> None:

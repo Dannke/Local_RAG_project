@@ -179,6 +179,35 @@ def _ingest_incremental(
     return store.count()
 
 
+def delete_document_from_index(index_dir: str | Path, relative_path: str) -> int:
+    """Remove a single source document from an existing FAISS index.
+
+    Uses the manifest to find the chunk ids belonging to ``relative_path``
+    and removes them via :meth:`FaissVectorStore.remove_ids`, so the other
+    documents in the index are left untouched (no full rebuild).
+
+    Returns the number of chunks removed. Returns 0 (and leaves the file) if
+    there is no existing index or the document is not indexed.
+    """
+    index_path = Path(index_dir)
+    if not (index_path / "index.faiss").exists() or not (index_path / "documents.json").exists():
+        return 0
+
+    manifest = IndexManifest.load(index_path)
+    record = manifest.files.get(relative_path)
+    if record is None:
+        return 0
+
+    store = FaissVectorStore.load_from_disk(index_path)
+    removed = store.remove_ids(record.chunk_ids or [])
+    store.save_to_disk()
+
+    updated_files = dict(manifest.files)
+    updated_files.pop(relative_path, None)
+    IndexManifest(files=updated_files).save(index_path)
+    return removed
+
+
 def _chunk_loaded_documents(documents: list[Document], settings: Settings) -> list[Document]:
     return chunk_documents(
         documents,

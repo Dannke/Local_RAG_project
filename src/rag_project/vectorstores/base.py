@@ -19,6 +19,9 @@ class VectorStore(Protocol):
     def count(self) -> int:
         """Return the number of stored documents."""
 
+    def remove_ids(self, document_ids: Sequence[str]) -> int:
+        """Remove documents by their IDs; return the number removed."""
+
 
 class InMemoryVectorStore:
     """Simple vector store for tests and local prototypes."""
@@ -35,6 +38,16 @@ class InMemoryVectorStore:
 
     def count(self) -> int:
         return len(self._items)
+
+    def remove_ids(self, document_ids: Sequence[str]) -> int:
+        remove_set = set(document_ids)
+        before = len(self._items)
+        self._items = [
+            (document, embedding)
+            for document, embedding in self._items
+            if document.id not in remove_set
+        ]
+        return before - len(self._items)
 
     def search(self, embedding: Sequence[float], top_k: int = 5) -> list[SearchResult]:
         scored = [
