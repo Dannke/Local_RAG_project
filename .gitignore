@@ -19,9 +19,11 @@ env/
 data/raw/*
 data/processed/*
 data/vector_store/*
+data/chats/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/vector_store/.gitkeep
+!data/chats/.gitkeep
 
 logs/
 tmp/

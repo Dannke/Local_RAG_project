@@ -7,8 +7,8 @@ import logging
 from pathlib import Path
 
 from rag_project.llm.llm_client import LLMClientError
-from rag_project.pipelines.ingest_pipeline import ingest_to_faiss
 from rag_project.pipelines.chat_pipeline import ChatSession
+from rag_project.pipelines.ingest_pipeline import ingest_to_faiss
 from rag_project.pipelines.search_pipeline import search_index
 
 

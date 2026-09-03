@@ -25,11 +25,11 @@ class IndexManifest:
     version: int = 1
 
     @classmethod
-    def empty(cls) -> "IndexManifest":
+    def empty(cls) -> IndexManifest:
         return cls(files={})
 
     @classmethod
-    def load(cls, index_dir: str | Path) -> "IndexManifest":
+    def load(cls, index_dir: str | Path) -> IndexManifest:
         path = manifest_path(index_dir)
         if not path.exists():
             return cls.empty()

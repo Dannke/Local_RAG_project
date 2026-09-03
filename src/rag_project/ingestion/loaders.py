@@ -151,7 +151,11 @@ def extract_docx_text(path: str | Path) -> str:
 
     try:
         doc = DocxDocument(str(file_path))
-        paragraphs = [paragraph.text.strip() for paragraph in doc.paragraphs if paragraph.text.strip()]
+        paragraphs = [
+            paragraph.text.strip()
+            for paragraph in doc.paragraphs
+            if paragraph.text.strip()
+        ]
         return "\n\n".join(paragraphs)
     except Exception as e:
         raise RuntimeError(f"Error processing DOCX file {file_path}: {e}") from e

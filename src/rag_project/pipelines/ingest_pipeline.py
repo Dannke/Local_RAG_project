@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from rag_project.config import Settings, load_settings
 from rag_project.embeddings.base import EmbeddingModel
@@ -63,14 +63,21 @@ def ingest_to_faiss(
     """
     active_settings = settings or load_settings()
     source_dir = Path(input_dir) if input_dir is not None else active_settings.raw_data_dir
-    target_index_dir = Path(index_dir) if index_dir is not None else active_settings.vector_store_dir
+    target_index_dir = (
+        Path(index_dir) if index_dir is not None else active_settings.vector_store_dir
+    )
 
     if incremental:
         return _ingest_incremental(source_dir, target_index_dir, active_settings, progress_callback)
     return _ingest_full(source_dir, target_index_dir, active_settings, progress_callback)
 
 
-def _ingest_full(source_dir: Path, index_dir: Path, settings: Settings, progress_callback: Callable[[str, int, int], None] | None = None) -> int:
+def _ingest_full(
+    source_dir: Path,
+    index_dir: Path,
+    settings: Settings,
+    progress_callback: Callable[[str, int, int], None] | None = None,
+) -> int:
     if progress_callback:
         progress_callback("Загрузка документов", 0, 1)
     
@@ -105,7 +112,12 @@ def _ingest_full(source_dir: Path, index_dir: Path, settings: Settings, progress
     return store.count()
 
 
-def _ingest_incremental(source_dir: Path, index_dir: Path, settings: Settings, progress_callback: Callable[[str, int, int], None] | None = None) -> int:
+def _ingest_incremental(
+    source_dir: Path,
+    index_dir: Path,
+    settings: Settings,
+    progress_callback: Callable[[str, int, int], None] | None = None,
+) -> int:
     current_records = scan_source_files(source_dir)
     old_manifest = IndexManifest.load(index_dir)
 

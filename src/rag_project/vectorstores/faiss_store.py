@@ -28,7 +28,7 @@ class FaissVectorStore:
         self.documents: list[Document] = []
 
     @classmethod
-    def load_from_disk(cls, index_dir: str | Path) -> "FaissVectorStore":
+    def load_from_disk(cls, index_dir: str | Path) -> FaissVectorStore:
         store = cls(index_dir)
         store.load()
         return store

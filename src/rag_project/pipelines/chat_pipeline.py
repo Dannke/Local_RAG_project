@@ -54,7 +54,7 @@ class ChatSession:
         index_dir: str | Path | None = None,
         settings: Settings | None = None,
         generator: LLM | None = None,
-    ) -> "ChatSession":
+    ) -> ChatSession:
         active_settings = settings or load_settings()
         store = FaissVectorStore.load_from_disk(index_dir or active_settings.vector_store_dir)
         retriever = Retriever(
@@ -63,7 +63,11 @@ class ChatSession:
         )
         reranker: Reranker
         if getattr(active_settings, 'use_reranker', True):
-            reranker_model = getattr(active_settings, 'reranker_model', 'cross-encoder/mmarco-mMiniLMv2-L12-H384-v1')
+            reranker_model = getattr(
+                active_settings,
+                'reranker_model',
+                'cross-encoder/mmarco-mMiniLMv2-L12-H384-v1',
+            )
             reranker = CrossEncoderReranker(reranker_model)
         else:
             reranker = NoOpReranker()

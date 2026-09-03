@@ -71,7 +71,7 @@ class OpenRouterClient:
         cls,
         settings: Settings | None = None,
         client: Any | None = None,
-    ) -> "OpenRouterClient":
+    ) -> OpenRouterClient:
         active_settings = settings or load_settings()
         return cls(
             api_key=active_settings.openrouter_api_key or "",
@@ -215,7 +215,9 @@ def _build_openai_client(api_key: str, base_url: str, timeout_seconds: int) -> A
     try:
         from openai import OpenAI
     except ImportError as exc:
-        raise LLMClientError("Install openai to use OpenRouter: python -m pip install openai") from exc
+        raise LLMClientError(
+            "Install openai to use OpenRouter: python -m pip install openai"
+        ) from exc
 
     return OpenAI(
         api_key=api_key,
@@ -228,7 +230,9 @@ def _extract_answer_text(completion: Any) -> str:
     try:
         content = completion.choices[0].message.content
     except (AttributeError, IndexError, TypeError) as exc:
-        raise EmptyLLMResponseError("OpenRouter response does not contain message content.") from exc
+        raise EmptyLLMResponseError(
+            "OpenRouter response does not contain message content."
+        ) from exc
 
     if isinstance(content, str):
         return content.strip()

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from rag_project.chat_store import (
@@ -50,7 +50,7 @@ class ChatStoreTest(unittest.TestCase):
     def test_meta_round_trip_and_rename(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "chats"
-            now = datetime(2026, 5, 29, 10, 15, tzinfo=timezone.utc)
+            now = datetime(2026, 5, 29, 10, 15, tzinfo=UTC)
 
             chat = create_chat(root, now=now)
             renamed = rename_chat(root, chat.id, "Project notes")

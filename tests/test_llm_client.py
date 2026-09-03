@@ -71,7 +71,9 @@ class LLMClientTests(unittest.TestCase):
             OpenRouterClient(api_key="", model="test/model", client=FakeOpenAIClient())
 
     def test_empty_response_raises_clear_error(self) -> None:
-        client = OpenRouterClient(api_key="test-key", model="test/model", client=FakeOpenAIClient(""))
+        client = OpenRouterClient(
+            api_key="test-key", model="test/model", client=FakeOpenAIClient("")
+        )
 
         with self.assertRaises(EmptyLLMResponseError):
             client.generate_answer("Question?", ["Context."])
