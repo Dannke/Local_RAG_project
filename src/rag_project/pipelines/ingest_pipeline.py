@@ -103,7 +103,7 @@ def ingest_to_faiss(
             "ingest_error",
             extra={
                 "error": exc.__class__.__name__,
-                "message": str(exc),
+                "error_message": str(exc),
                 "elapsed_ms": _now_ms() - start,
             },
             exc_info=True,

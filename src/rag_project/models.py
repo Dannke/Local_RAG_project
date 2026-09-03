@@ -17,3 +17,4 @@ class Document:
 class SearchResult:
     document: Document
     score: float
+    faiss_id: int | None = None

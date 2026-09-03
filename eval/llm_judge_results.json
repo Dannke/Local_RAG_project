@@ -1,0 +1,267 @@
+{
+  "faithfulness_avg": 5.0,
+  "relevance_avg": 3.8,
+  "questions_evaluated": 20,
+  "details": [
+    {
+      "question": "What is the main topic of the RAG project documentation?",
+      "answer": "The main topic is the implementation of a local Retrieval-Augmented Generation (RAG) system with FAISS vector storage, sentence-transformers embeddings, and OpenRouter LLM integration [S1].",
+      "expected_answer": "The project implements a local Retrieval-Augmented Generation system.",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "The answer directly restates the main topic from the context [1], accurately describing the RAG system with FAISS, sentence-transformers, and OpenRouter integration without adding unsupported information."
+      },
+      "relevance": {
+        "score": 4,
+        "reasoning": "The answer addresses the question directly and gives a coherent summary of the RAG project, but the cited source [S1] is not available in the provided context, so full verification is not possible."
+      }
+    },
+    {
+      "question": "How does the chunking work in this project?",
+      "answer": "Chunking uses token-based sizing with sentence boundary alignment and configurable overlap. The chunk size and overlap are measured in tokens of the embedding model's tokenizer, not characters. RAG_CHUNK_SIZE and RAG_CHUNK_OVERLAP are measured in tokens [S1], [S3].",
+      "expected_answer": "Chunking uses token-based sizing with sentence boundary alignment and configurable overlap.",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "The answer accurately reflects the context: chunking uses token-based sizing with sentence boundary alignment and configurable overlap, measured in the embedding model's tokenizer tokens, and RAG_CHUNK_SIZE/OVERLAP are token-based. References [S1] and [S3] support this."
+      },
+      "relevance": {
+        "score": 5,
+        "reasoning": "Answer directly and thoroughly addresses the question by explaining chunking mechanism (token-based sizing, sentence boundary alignment, configurable overlap, token measurements) and relevant config variables. It is highly relevant and complete."
+      }
+    },
+    {
+      "question": "What embedding model is used by default?",
+      "answer": "The default embedding model is sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 [S1].",
+      "expected_answer": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "Ответ точно соответствует контексту [S1], где указана модель по умолчанию."
+      },
+      "relevance": {
+        "score": 5,
+        "reasoning": "Ответ напрямую отвечает на вопрос, указывая конкретную модель эмбеддингов по умолчанию, и содержит ссылку на источник [S1]."
+      }
+    },
+    {
+      "question": "How are documents deleted from the FAISS index?",
+      "answer": "Документы удаляются из FAISS-индекса с помощью `IndexIDMap` и метода `remove_ids()`, используя сохранённые стабильные `faiss_ids` — это позволяет удалять документы без полного пересоздания индекса [S1]. Также подтверждается, что `IndexIDMap` используется для удаления по ID [S2].",
+      "expected_answer": "Using IndexIDMap with remove_ids() and persisted faiss_ids for stable document identifiers.",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "Ответ полностью соответствует контексту: удаление через IndexIDMap и remove_ids() с faiss_ids без пересоздания индекса [S1], подтверждено в [S2]."
+      },
+      "relevance": {
+        "score": 5,
+        "reasoning": "Ответ напрямую отвечает на вопрос, объясняя механизм удаления документов из FAISS-индекса через IndexIDMap и remove_ids(), и приводит ссылки на источники."
+      }
+    },
+    {
+      "question": "What rate limiting is implemented for LLM requests?",
+      "answer": "Based on the provided context, the rate limiting implemented is a sliding window rate limiter with configurable max requests per window per session, controlled by `RATE_LIMIT_MAX_REQUESTS` (0 = disabled) and `RATE_LIMIT_WINDOW_SECONDS` environment variables [S1]. The context does not specify a separate mechanism specifically for LLM requests; this applies generally to requests. Additionally, a `RateLimitExceededError` is mentioned in the error handling documentation [S2].",
+      "expected_answer": "Sliding window rate limiter with configurable max requests per window per session.",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "The answer accurately reflects the context: it describes the sliding window rate limiter with configurable settings and notes the absence of a specific LLM-only mechanism, correctly citing [S1] and [S2]."
+      },
+      "relevance": {
+        "score": 0,
+        "reasoning": "judge error"
+      }
+    },
+    {
+      "question": "How does the reranker improve search results?",
+      "answer": "Реренкер повышает качество поиска, выполняя кросс-энкодерное ранжирование кандидатных фрагментов по оценке релевантности перед финальной выдачей [S1]. Число кандидатов для реранкинга управляется параметром RERANK_CANDIDATES [S1].",
+      "expected_answer": "Cross-encoder reranks candidate chunks by relevance score before final retrieval.",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "Ответ полностью соответствует контексту [1]: указано кросс-энкодерное ранжирование кандидатов по релевантности перед финальной выдачей и управление через RERANK_CANDIDATES."
+      },
+      "relevance": {
+        "score": 2,
+        "reasoning": "Ответ тематически соответствует вопросу, но в предоставленном контексте [S1] нет сведений о кросс-энкодерах или RERANK_CANDIDATES, поэтому утверждения не подтверждены источником и не могут считаться надёжными."
+      }
+    },
+    {
+      "question": "What is the structure of the chat sessions?",
+      "answer": "The structure of chat sessions is described in [S1]: each chat has isolated index, messages, and sources stored under `data/chats/chat_XXX/`, and chat sessions maintain their own FAISS index for document isolation.",
+      "expected_answer": "Each chat has isolated index, messages, and sources stored under data/chats/chat_XXX/.",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "The answer accurately reflects context [1], stating each chat has isolated index, messages, and sources under data/chats/chat_XXX/ and maintains its own FAISS index."
+      },
+      "relevance": {
+        "score": 5,
+        "reasoning": "The answer directly addresses the question about chat session structure, providing specific details about isolated indexes, messages, sources, and FAISS index, with a source reference."
+      }
+    },
+    {
+      "question": "How does the CLI ingest command work?",
+      "answer": "Из предоставленного контекста известно только, что команда CLI ingest запускается с параметрами `--data` и `--index`, например: `rag-project ingest --data data/raw --index data/vector_store` [S1]. Однако детали того, как именно работает процесс ingest (обработка данных, создание индекса и т.д.), в контексте не описаны. Поэтому для полного ответа недостаточно информации.",
+      "expected_answer": "rag-project ingest --data data/raw --index data/vector_store",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "Ответ точно соответствует контексту: он цитирует единственную доступную информацию о CLI ingest из [S1] и корректно отмечает, что деталей процесса в контексте нет. Не содержит выдуманных фактов или противоречий."
+      },
+      "relevance": {
+        "score": 3,
+        "reasoning": "Ответ частично релевантен: указана команда ingest с параметрами --data и --index [S1], но не объяснён сам процесс работы ingest (обработка данных, создание индекса), поэтому ответ неполный."
+      }
+    },
+    {
+      "question": "What logging format is used in production?",
+      "answer": "Structured JSON logging with request ID correlation [S1].",
+      "expected_answer": "Structured JSON logging with request ID correlation and log rotation.",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "The answer directly matches the context in [S1], which states 'Structured JSON logging with request ID correlation'."
+      },
+      "relevance": {
+        "score": 5,
+        "reasoning": "The answer directly and completely addresses the question about the production logging format by stating structured JSON logging with request ID correlation."
+      }
+    },
+    {
+      "question": "How does the health check verify the deployment?",
+      "answer": "The health check verifies the deployment by checking **disk space, index integrity, retrieval ping, and optional LLM connectivity**, as described in [S2]. It is run with `scripts/health_check.py --index-dir data/vector_store [--no-llm]` [S2]. Additionally, the deployment configuration itself includes a healthcheck in the docker-compose setup [S1].",
+      "expected_answer": "Checks disk space, index integrity, retrieval ping, and optional LLM connectivity.",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "Все утверждения точно соответствуют контексту: перечень проверок (disk space, index integrity, retrieval ping, optional LLM connectivity) и команда запуска scripts/health_check.py --index-dir data/vector_store [--no-llm] дословно из [S2]; упоминание healthcheck в docker-compose подтверждается [S1]. Противоречий и выдуманных фактов нет."
+      },
+      "relevance": {
+        "score": 5,
+        "reasoning": "Ответ полностью отвечает на вопрос, перечисляет проверки (диск, целостность индекса, retrieval ping, LLM), команду запуска и ссылается на [S2], а также упоминает healthcheck в docker-compose из [S1]."
+      }
+    },
+    {
+      "question": "What happens when a document is uploaded via the UI?",
+      "answer": "При загрузке документа через UI файлы сохраняются в каталог необработанных данных, после чего индекс обновляется через кнопку 'Index Documents'. Поддерживаются форматы PDF, DOCX, TXT и MD. [S1]",
+      "expected_answer": "Files are saved to raw data directory and index is updated via 'Index Documents' button.",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "Ответ полностью соответствует контексту [1]: файлы сохраняются в raw data directory, индекс обновляется через кнопку 'Index Documents', поддерживаются PDF, DOCX, TXT, MD."
+      },
+      "relevance": {
+        "score": 5,
+        "reasoning": "Ответ прямо и полно отвечает на вопрос: описывает сохранение в каталог необработанных данных, обновление индекса через кнопку и поддерживаемые форматы, что делает его релевантным и полезным. Указана ссылка [S1]."
+      }
+    },
+    {
+      "question": "How are citations generated in answers?",
+      "answer": "Citations are generated by `Build_citations`, which creates citation objects from search results, linking answer spans to source document chunks with metadata [S1].",
+      "expected_answer": "Citations link answer spans to source document chunks with metadata.",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "The answer directly matches context [1]: Build_citations creates citation objects from search results, and citations link answer spans to source document chunks with metadata."
+      },
+      "relevance": {
+        "score": 5,
+        "reasoning": "The response directly answers the question by explaining how citations are generated and includes a source reference to support the claim."
+      }
+    },
+    {
+      "question": "What token counting method is used for chunking?",
+      "answer": "The chunking uses token-based sizing with the embedding model's tokenizer to count tokens, not characters. RAG_CHUNK_SIZE and RAG_CHUNK_OVERLAP are measured in tokens [S1], [S2].",
+      "expected_answer": "Uses the embedding model's tokenizer to count tokens, not characters.",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "The answer directly matches context [1] and [2]: token-based sizing uses the embedding model's tokenizer, tokens not characters, and RAG_CHUNK_SIZE/RAG_CHUNK_OVERLAP are measured in tokens."
+      },
+      "relevance": {
+        "score": 5,
+        "reasoning": "The answer directly and completely addresses the question by specifying token-based sizing with the embedding model's tokenizer."
+      }
+    },
+    {
+      "question": "How does incremental indexing detect changes?",
+      "answer": "Incremental indexing detects changes by tracking file hashes and chunk IDs; only modified files are re-indexed. The manifest stores source file records with content hashes. [S1]",
+      "expected_answer": "Manifest tracks file hashes and chunk IDs; only modified files are re-indexed.",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "The answer directly matches the provided context, accurately stating that file hashes and chunk IDs are tracked, only modified files are re-indexed, and manifest stores source file records with content hashes."
+      },
+      "relevance": {
+        "score": 5,
+        "reasoning": "The answer directly and completely explains how incremental indexing detects changes via file hashes and chunk IDs, addresses the question."
+      }
+    },
+    {
+      "question": "What authentication method is recommended for production?",
+      "answer": "Рекомендуемый метод доступа для продакшена — через Tailscale или Cloudflare Tunnel, поскольку публичный порт отсутствует [S1].",
+      "expected_answer": "No public port; access via Tailscale or Cloudflare Tunnel.",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "The answer accurately reflects context [S1], which states access via Tailscale or Cloudflare Tunnel and no public port."
+      },
+      "relevance": {
+        "score": 2,
+        "reasoning": "Ответ говорит о методе доступа (Tailscale/Cloudflare Tunnel), а не о методе аутентификации для production. Упомянутый [S1] не подтверждает именно рекомендацию по аутентификации; ответ лишь минимально связан с вопросом."
+      }
+    },
+    {
+      "question": "What is the default chunk size and overlap in tokens?",
+      "answer": "The default chunk size is 800 tokens, and the default chunk overlap is 120 tokens. [S1]",
+      "expected_answer": "Default chunk size is 800 tokens with 120 token overlap.",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "The answer is fully faithful to the context. Source [1] explicitly states 'Default chunk size: 800 tokens Default chunk overlap: 120 tokens'."
+      },
+      "relevance": {
+        "score": 0,
+        "reasoning": "judge error"
+      }
+    },
+    {
+      "question": "How does the system handle missing API keys?",
+      "answer": "Система вызывает `MissingAPIKeyError` и отображает понятное сообщение в пользовательском интерфейсе. [S1]",
+      "expected_answer": "MissingAPIKeyError is raised and surfaced in UI with clear message.",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "Ответ полностью соответствует контексту [S1]: MissingAPIKeyError вызывается и выводится в UI с понятным сообщением. Нет галлюцинаций или противоречий; ссылка на источник указана корректно."
+      },
+      "relevance": {
+        "score": 0,
+        "reasoning": "judge error"
+      }
+    },
+    {
+      "question": "What vector store implementation is used?",
+      "answer": "Используется FAISS vector store. В документации указано: \"FAISS IndexFlatIP wrapped in IndexIDMap for ID-based removal\" [S3], а также общее упоминание \"FAISS vector storage\" в описании проекта [S1].",
+      "expected_answer": "FAISS IndexFlatIP wrapped in IndexIDMap for ID-based removal.",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "Ответ полностью соответствует контексту, точно цитируя FAISS IndexFlatIP wrapped in IndexIDMap из [S3] и упоминание FAISS vector storage из [S1]."
+      },
+      "relevance": {
+        "score": 5,
+        "reasoning": "Ответ прямо и полностью отвечает на вопрос, указывая FAISS vector store и приводя ссылки на источники [S1] и [S3]."
+      }
+    },
+    {
+      "question": "How are search results formatted for the LLM context?",
+      "answer": "Search results are formatted as chunks limited by `max_context_chars` and marked with citations, while `limit_context_chunks` ensures the context fits within model limits [S1]. Citation markers link answer spans to source document chunks with metadata [S2].",
+      "expected_answer": "Chunks are limited by max_context_chars and formatted with citation markers.",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "The answer faithfully restates the context: chunks limited by max_context_chars, citation markers, limit_context_chunks, and citation linking to source chunks with metadata."
+      },
+      "relevance": {
+        "score": 5,
+        "reasoning": "The answer directly and comprehensively addresses how search results are formatted for LLM context, covering chunk limits, citation markers, and context size management."
+      }
+    },
+    {
+      "question": "What deployment artifacts are included?",
+      "answer": "The deployment artifacts included are Dockerfile and docker-compose.yml, as described in the deployment documentation [S1].",
+      "expected_answer": "Dockerfile, docker-compose.yml with volumes, healthcheck, no exposed ports.",
+      "faithfulness": {
+        "score": 5,
+        "reasoning": "The answer accurately identifies Dockerfile and docker-compose.yml as deployment artifacts, matching context [S1]."
+      },
+      "relevance": {
+        "score": 5,
+        "reasoning": "Ответ напрямую перечисляет конкретные артефакты развертывания (Dockerfile, docker-compose.yml) и ссылается на документацию [S1], полностью отвечая на вопрос."
+      }
+    }
+  ]
+}

@@ -110,7 +110,11 @@ class FaissVectorStore:
             if position is None:
                 continue
             results.append(
-                SearchResult(document=self.documents[position], score=float(score))
+                SearchResult(
+                    document=self.documents[position],
+                    score=float(score),
+                    faiss_id=int(faiss_id),
+                )
             )
 
         return results

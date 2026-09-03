@@ -1,0 +1,8 @@
+{
+  "recall@1": 0.85,
+  "recall@3": 1.0,
+  "recall@5": 1.0,
+  "recall@10": 1.0,
+  "mrr": 0.925,
+  "questions_evaluated": 20
+}
