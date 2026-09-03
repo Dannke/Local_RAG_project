@@ -37,7 +37,6 @@ def _env_bool(env: Mapping[str, str], key: str, default: bool) -> bool:
 class Settings:
     project_root: Path
     raw_data_dir: Path
-    processed_data_dir: Path
     vector_store_dir: Path
     embedding_model: str
     llm_model: str
@@ -70,7 +69,6 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     return Settings(
         project_root=project_root,
         raw_data_dir=project_root / "data" / "raw",
-        processed_data_dir=project_root / "data" / "processed",
         vector_store_dir=project_root / "data" / "vector_store",
         embedding_model=source.get(
             "RAG_EMBEDDING_MODEL",
