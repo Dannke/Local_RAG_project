@@ -10,11 +10,14 @@ from rag_project.config import Settings, load_settings
 from rag_project.embeddings.sentence_transformers import SentenceTransformerEmbeddingModel
 from rag_project.generation.llm import LLM
 from rag_project.llm.llm_client import OpenRouterGenerator
+from rag_project.logging_setup import get_logger, new_request_id
 from rag_project.models import Document, SearchResult
 from rag_project.retrieval.citations import Citation, build_citations, format_citation_context
 from rag_project.retrieval.reranker import CrossEncoderReranker, NoOpReranker, Reranker
 from rag_project.retrieval.retriever import Retriever
 from rag_project.vectorstores.faiss_store import FaissVectorStore
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -82,10 +85,19 @@ class ChatSession:
         )
 
     def ask(self, question: str, top_k: int | None = None) -> ChatResponse:
+        new_request_id()
         results = self._search(question, top_k)
         contexts = [result.document for result in results]
         citations = build_citations(results)
         context_chunks = format_citation_context(citations)
+        logger.info(
+            "answer_request",
+            extra={
+                "question": question,
+                "final_top_k": top_k or self.default_top_k,
+                "retrieved": len(results),
+            },
+        )
         return ChatResponse(
             answer=self.generator.generate(question, context_chunks),
             contexts=contexts,
@@ -94,10 +106,19 @@ class ChatSession:
         )
 
     def stream(self, question: str, top_k: int | None = None) -> ChatStreamResponse:
+        new_request_id()
         results = self._search(question, top_k)
         contexts = [result.document for result in results]
         citations = build_citations(results)
         context_chunks = format_citation_context(citations)
+        logger.info(
+            "stream_request",
+            extra={
+                "question": question,
+                "final_top_k": top_k or self.default_top_k,
+                "retrieved": len(results),
+            },
+        )
         return ChatStreamResponse(
             chunks=self.generator.stream(question, context_chunks),
             contexts=contexts,
