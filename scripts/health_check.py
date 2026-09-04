@@ -65,6 +65,26 @@ def check_retrieval(index_dir: Path, settings) -> tuple[bool, str]:
         return False, f"Retrieval check failed: {exc}"
 
 
+def find_index_dir(default_dir: Path, chats_dir: Path) -> Path:
+    """Return a usable FAISS index directory: the legacy shared path if it
+    already contains an index, otherwise the most recently modified
+    per-chat index directory, otherwise fall back to the legacy path
+    unchanged (so the existing "not found" error message still fires).
+    """
+    if (default_dir / "index.faiss").exists():
+        return default_dir
+    if chats_dir.exists():
+        candidates = sorted(
+            chats_dir.glob("*/index"),
+            key=lambda p: p.stat().st_mtime if p.exists() else 0,
+            reverse=True,
+        )
+        for candidate in candidates:
+            if (candidate / "index.faiss").exists():
+                return candidate
+    return default_dir
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Health check for RAG deployment")
     parser.add_argument(
@@ -87,12 +107,14 @@ def main() -> int:
     args = parser.parse_args()
 
     settings = load_settings()
-    index_dir = args.index_dir or settings.vector_store_dir
+    index_dir = args.index_dir or find_index_dir(
+        settings.vector_store_dir, settings.vector_store_dir.parent / "chats"
+    )
 
     checks = []
 
     # Disk space
-    ok, msg = check_disk_space(index_dir, args.min_free_gb)
+    ok, msg = check_disk_space(settings.vector_store_dir.parent, args.min_free_gb)
     checks.append(("Disk space", ok, msg))
 
     # Index integrity

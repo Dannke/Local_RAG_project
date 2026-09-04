@@ -1093,7 +1093,11 @@ _RELEVANCE_TIERS = (
 )
 
 
-def _relevance_for(score: float) -> tuple[int, str, str] | None:
+def _relevance_for(
+    score: float,
+    score_min: float | None = None,
+    score_max: float | None = None,
+) -> tuple[int, str, str] | None:
     """Map a raw score to a (percent, label, color) triple for display only.
 
     Returns None when the score is not a usable number (None, NaN, non-numeric),
@@ -1106,9 +1110,13 @@ def _relevance_for(score: float) -> tuple[int, str, str] | None:
         return None
     if math.isnan(numeric) or math.isinf(numeric):
         return None
-    percent = max(0, min(int(round(numeric * 100)), 100))
+    if score_min is not None and score_max is not None and score_max > score_min:
+        probability = (numeric - score_min) / (score_max - score_min)
+    else:
+        probability = 1.0 / (1.0 + math.exp(-numeric))
+    percent = max(0, min(int(round(probability * 100)), 100))
     for threshold, label, color in _RELEVANCE_TIERS:
-        if numeric >= threshold:
+        if probability >= threshold:
             return percent, label, color
     return percent, _RELEVANCE_TIERS[-1][1], _RELEVANCE_TIERS[-1][2]
 
@@ -1154,7 +1162,12 @@ def _render_sources_empty() -> None:
     )
 
 
-def _render_citation_card(index: int, citation: Citation) -> None:
+def _render_citation_card(
+    index: int,
+    citation: Citation,
+    score_min: float | None,
+    score_max: float | None,
+) -> None:
     """Sections 2–6 — a single citation card.
 
     Layout: source number + filename (2/3), file type & page chips (3),
@@ -1168,7 +1181,7 @@ def _render_citation_card(index: int, citation: Citation) -> None:
     has_page = bool(citation.page)
     page_value = citation.page if has_page else None
 
-    relevance = _relevance_for(citation.score)
+    relevance = _relevance_for(citation.score, score_min, score_max)
 
     # Card header + document information (filename, type, page chip).
     chips = [f'<span class="citation-chip"><b>{file_type}</b></span>']
@@ -1224,6 +1237,9 @@ def _render_right_panel(results) -> None:
     cards. Does not touch retrieval, reranking, scoring or citation logic.
     """
     citations = build_citations(results)
+    _scores = [c.score for c in citations if c.score is not None]
+    score_min = min(_scores) if _scores else None
+    score_max = max(_scores) if _scores else None
 
     _render_sources_header(len(citations))
 
@@ -1232,7 +1248,7 @@ def _render_right_panel(results) -> None:
         return
 
     for index, citation in enumerate(citations, start=1):
-        _render_citation_card(index, citation)
+        _render_citation_card(index, citation, score_min, score_max)
 
 
 # ─────────────────────────── Utilities ────────────────────────────
