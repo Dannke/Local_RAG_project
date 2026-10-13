@@ -1,10 +1,10 @@
 import unittest
 
-from rag_project.embeddings.base import HashingEmbeddingModel
-from rag_project.models import Document
-from rag_project.pipelines.chat_pipeline import ChatSession
-from rag_project.retrieval.retriever import Retriever
-from rag_project.vectorstores.base import InMemoryVectorStore
+from rag_project.application.chat import ChatSession
+from rag_project.application.retrieval import Retriever
+from rag_project.domain.models import Document
+from rag_project.infrastructure.embeddings import HashingEmbeddingModel
+from rag_project.infrastructure.memory_store import InMemoryVectorStore
 
 
 class FakeGenerator:

@@ -1,14 +1,9 @@
 import unittest
 from types import SimpleNamespace
 
-from rag_project.llm.llm_client import (
-    SYSTEM_PROMPT,
-    EmptyLLMResponseError,
-    MissingAPIKeyError,
-    OpenRouterClient,
-    build_user_prompt,
-    limit_context_chunks,
-)
+from rag_project.domain.errors import EmptyLLMResponseError, MissingAPIKeyError
+from rag_project.domain.prompts import SYSTEM_PROMPT, build_user_prompt, limit_context_chunks
+from rag_project.infrastructure.openrouter import OpenRouterClient
 
 
 class FakeCompletions:

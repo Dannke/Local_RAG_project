@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from rag_project.pipelines.ingest_pipeline import ingest_to_faiss  # noqa: E402
+from rag_project.bootstrap import ingest_to_faiss  # noqa: E402
 
 
 def main() -> int:

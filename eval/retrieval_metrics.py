@@ -9,50 +9,47 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # shared eval helpers
 
 # ruff: noqa: E402
+from golden import load_golden
+
+from rag_project.bootstrap import create_retriever
 from rag_project.config import load_settings
-from rag_project.embeddings.sentence_transformers import SentenceTransformerEmbeddingModel
-from rag_project.retrieval.retriever import Retriever
-from rag_project.vectorstores.faiss_store import FaissVectorStore
+from rag_project.domain.models import Document, SearchResult
+from rag_project.infrastructure.faiss_store import FaissVectorStore
 
 
-def load_golden(path: Path) -> list[dict]:
-    with path.open(encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
+def _from_source(document: Document, source_path: str) -> bool:
+    return document.relative_path == source_path
 
 
-def get_doc_ids_for_source(store: FaissVectorStore, source_path: str) -> set[int]:
-    """Return FAISS IDs of documents from a given source file."""
-    ids = set()
-    for idx, doc in enumerate(store.documents):
-        if doc.metadata.get("relative_path") == source_path:
-            ids.add(store._faiss_ids[idx])
-    return ids
+def count_chunks_for_source(documents: list[Document], source_path: str) -> int:
+    """Number of indexed chunks that belong to a given source file."""
+    return sum(1 for document in documents if _from_source(document, source_path))
 
 
-def recall_at_k(results: list, relevant_ids: set[int], k: int) -> float:
-    if not relevant_ids:
+def recall_at_k(
+    results: list[SearchResult], source_path: str, relevant_count: int, k: int
+) -> float:
+    if not relevant_count:
         return 1.0
-    top_k = results[:k]
-    found = sum(1 for r in top_k if getattr(r, "faiss_id", None) in relevant_ids)
-    return found / len(relevant_ids)
+    found = sum(1 for result in results[:k] if _from_source(result.document, source_path))
+    return found / relevant_count
 
 
-def mrr(results: list, relevant_ids: set[int]) -> float:
-    for rank, r in enumerate(results, start=1):
-        if getattr(r, "faiss_id", None) in relevant_ids:
+def mrr(results: list[SearchResult], source_path: str) -> float:
+    for rank, result in enumerate(results, start=1):
+        if _from_source(result.document, source_path):
             return 1.0 / rank
     return 0.0
 
 
 def evaluate(golden_path: Path, index_dir: Path, top_k: int = 5) -> dict:
-    settings = load_settings()
-    store = FaissVectorStore.load_from_disk(index_dir)
-    retriever = Retriever(
-        embedding_model=SentenceTransformerEmbeddingModel(settings.embedding_model),
-        vector_store=store,
-    )
+    retriever = create_retriever(index_dir, load_settings())
+    store = retriever.vector_store
+    assert isinstance(store, FaissVectorStore)
+    documents = store.documents
     golden = load_golden(golden_path)
 
     recall_sum = {k: 0.0 for k in [1, 3, 5, 10]}
@@ -62,17 +59,17 @@ def evaluate(golden_path: Path, index_dir: Path, top_k: int = 5) -> dict:
     for item in golden:
         question = item["question"]
         expected_source = item["expected_source"]
-        relevant_ids = get_doc_ids_for_source(store, expected_source)
+        relevant_count = count_chunks_for_source(documents, expected_source)
 
-        if not relevant_ids:
+        if not relevant_count:
             print(f"[WARN] No docs found for source: {expected_source}")
             continue
 
         results = retriever.search(question, top_k=top_k)
         for k in [1, 3, 5, 10]:
             if k <= top_k:
-                recall_sum[k] += recall_at_k(results, relevant_ids, k)
-        mrr_sum += mrr(results, relevant_ids)
+                recall_sum[k] += recall_at_k(results, expected_source, relevant_count, k)
+        mrr_sum += mrr(results, expected_source)
         total += 1
 
     return {

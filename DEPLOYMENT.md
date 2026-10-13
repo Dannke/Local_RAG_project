@@ -135,7 +135,7 @@ Structured JSON logs in `/data/logs/app.log` (rotated at 10 MB, 5 backups). Each
 
 Example log line:
 ```json
-{"ts":1699999999999,"level":"INFO","logger":"rag_project.llm.llm_client","message":"llm_completed","request_id":"abc123","model":"openrouter/auto","latency_ms":1234,"success":true,"prompt_tokens":456,"completion_tokens":78,"total_tokens":534}
+{"ts":1699999999999,"level":"INFO","logger":"rag_project.infrastructure.openrouter","message":"llm_completed","request_id":"abc123","model":"openrouter/auto","latency_ms":1234,"success":true,"prompt_tokens":456,"completion_tokens":78,"total_tokens":534}
 ```
 
 ## Backup

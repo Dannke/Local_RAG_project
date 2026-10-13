@@ -1,12 +1,12 @@
 import unittest
 
-from rag_project.ingestion.chunking import (
+from rag_project.domain.chunking import (
     chunk_documents,
     chunk_text,
     chunk_text_by_tokens,
     split_text_blocks,
 )
-from rag_project.models import Document
+from rag_project.domain.models import Document
 
 
 def _word_token_counter(text: str) -> int:

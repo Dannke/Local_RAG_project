@@ -10,10 +10,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # shared eval helpers
 
+from golden import load_golden  # noqa: E402
+
+from rag_project.bootstrap import create_chat_session, create_llm_client  # noqa: E402
 from rag_project.config import load_settings  # noqa: E402
-from rag_project.llm.llm_client import OpenRouterClient  # noqa: E402
-from rag_project.pipelines.chat_pipeline import ChatSession  # noqa: E402
+from rag_project.infrastructure.openrouter import OpenRouterClient  # noqa: E402
 
 FAITHFULNESS_PROMPT = (
     "You are an expert evaluator. Assess whether the ANSWER is faithful "
@@ -45,11 +48,6 @@ RELEVANCE_PROMPT = (
 )
 
 
-def load_golden(path: Path) -> list[dict]:
-    with path.open(encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
-
-
 def parse_judge_response(response: str) -> tuple[int, str] | None:
     try:
         data = json.loads(response.strip())
@@ -73,8 +71,8 @@ def evaluate(golden_path: Path, index_dir: Path, output_path: Path, top_k: int =
     settings = load_settings()
     golden = load_golden(golden_path)
 
-    client = OpenRouterClient.from_settings(settings, rate_limit_key="eval")
-    session = ChatSession.from_faiss_index(index_dir=index_dir, settings=settings)
+    client = create_llm_client(settings, rate_limit_key="eval")
+    session = create_chat_session(index_dir=index_dir, settings=settings)
 
     results = []
     faithful_sum = 0

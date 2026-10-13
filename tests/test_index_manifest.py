@@ -2,11 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from rag_project.pipelines.index_manifest import (
-    IndexManifest,
-    scan_source_files,
-    with_chunk_ids,
-)
+from rag_project.domain.manifest import IndexManifest, with_chunk_ids
+from rag_project.infrastructure.document_directory import scan_source_files
+from rag_project.infrastructure.index_storage import FaissIndexRepository
 
 
 class IndexManifestTests(unittest.TestCase):
@@ -28,7 +26,8 @@ class IndexManifestTests(unittest.TestCase):
             record = scan_source_files(root)["doc.txt"]
             manifest = IndexManifest(files={"doc.txt": with_chunk_ids(record, ["chunk-1"])})
 
-            manifest.save(root / "index")
-            loaded = IndexManifest.load(root / "index")
+            repository = FaissIndexRepository(root / "index")
+            repository.save_manifest(manifest)
+            loaded = repository.load_manifest()
 
             self.assertEqual(loaded.files["doc.txt"].chunk_ids, ["chunk-1"])

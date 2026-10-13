@@ -1,8 +1,8 @@
 import unittest
 
-from rag_project.models import Document, SearchResult
-from rag_project.retrieval.citations import build_citations, format_citation_context
-from rag_project.retrieval.reranker import NoOpReranker
+from rag_project.application.retrieval import NoOpReranker
+from rag_project.domain.citations import build_citations, format_citation_context
+from rag_project.domain.models import Document, SearchResult
 
 
 class RerankerAndCitationTests(unittest.TestCase):

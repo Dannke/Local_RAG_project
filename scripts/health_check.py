@@ -10,17 +10,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from rag_project.config import load_settings  # noqa: E402
-from rag_project.embeddings.sentence_transformers import (  # noqa: E402
-    SentenceTransformerEmbeddingModel,
-)
-from rag_project.llm.llm_client import OpenRouterClient  # noqa: E402
-from rag_project.retrieval.retriever import Retriever  # noqa: E402
-from rag_project.vectorstores.faiss_store import FaissVectorStore  # noqa: E402
+from rag_project.bootstrap import create_llm_client, create_retriever  # noqa: E402
+from rag_project.config import Settings, load_settings  # noqa: E402
+from rag_project.infrastructure.faiss_store import FaissVectorStore  # noqa: E402
 
 
 def check_disk_space(path: Path, min_free_gb: float = 1.0) -> tuple[bool, str]:
-    total, used, free = shutil.disk_usage(path)
+    free = shutil.disk_usage(path).free
     free_gb = free / (1024 ** 3)
     ok = free_gb >= min_free_gb
     return ok, f"Disk free: {free_gb:.2f} GB (min {min_free_gb} GB)"
@@ -37,13 +33,10 @@ def check_index(index_dir: Path) -> tuple[bool, str]:
         return False, f"Failed to load index at {index_dir}: {exc}"
 
 
-def check_llm(settings) -> tuple[bool, str]:
+def check_llm(settings: Settings) -> tuple[bool, str]:
     """Ping LLM with a minimal request."""
     try:
-        client = OpenRouterClient.from_settings(
-            settings,
-            rate_limit_key="healthcheck",
-        )
+        client = create_llm_client(settings, rate_limit_key="healthcheck")
         # A tiny prompt to verify connectivity
         answer = client.generate_answer("Say OK", [])
         return True, f"LLM responded: {answer[:50]}..."
@@ -51,15 +44,10 @@ def check_llm(settings) -> tuple[bool, str]:
         return False, f"LLM check failed: {exc}"
 
 
-def check_retrieval(index_dir: Path, settings) -> tuple[bool, str]:
+def check_retrieval(index_dir: Path, settings: Settings) -> tuple[bool, str]:
     """Test search with a dummy query."""
     try:
-        store = FaissVectorStore.load_from_disk(index_dir)
-        retriever = Retriever(
-            embedding_model=SentenceTransformerEmbeddingModel(settings.embedding_model),
-            vector_store=store,
-        )
-        results = retriever.search("test", top_k=1)
+        results = create_retriever(index_dir, settings).search("test", top_k=1)
         return True, f"Retrieval OK: {len(results)} results"
     except Exception as exc:
         return False, f"Retrieval check failed: {exc}"
