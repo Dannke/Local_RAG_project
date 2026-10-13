@@ -187,3 +187,20 @@ class DeleteDocumentFromIndexTests(unittest.TestCase):
             self.assertEqual(removed, 1)
             store = FaissVectorStore.load_from_disk(temp_dir)
             self.assertEqual([doc.id for doc in store.documents], ["docs/manual.pdf"])
+
+
+class AtomicSaveTests(unittest.TestCase):
+    def test_failed_save_leaves_previous_index_loadable(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = FaissVectorStore(temp_dir)
+            store.add([Document(id="a", text="alpha"), Document(id="b", text="beta")],
+                      [[1.0, 0.0], [0.0, 1.0]])
+            store.save()
+            # A set is not JSON-serializable, so saving this document fails.
+            store.add([Document(id="c", text="gamma", metadata={"bad": {1}})], [[1.0, 1.0]])
+
+            with self.assertRaises(TypeError):
+                store.save()
+
+            loaded = FaissVectorStore.load_from_disk(temp_dir)
+            self.assertEqual(sorted(doc.id for doc in loaded.documents), ["a", "b"])

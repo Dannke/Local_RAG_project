@@ -316,10 +316,12 @@ def _run_indexing(
     success: str,
     failure: str,
 ) -> None:
-    """Run ingestion with a live progress bar; a rebuild clears the index first."""
+    """Run ingestion with a live progress bar.
+
+    A rebuild builds the new index in memory and only replaces the saved one on
+    success, so a failed rebuild keeps the previous index usable.
+    """
     try:
-        if not incremental:
-            workspace.index.clear()
         progress_bar = st.progress(0)
         status_text = st.empty()
 

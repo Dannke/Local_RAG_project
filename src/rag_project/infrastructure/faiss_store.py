@@ -8,6 +8,7 @@ stable integer id. This enables ``remove_ids`` (document deletion) which plain
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -133,16 +134,21 @@ class FaissVectorStore:
                 f"but metadata contains {len(self.documents)} documents"
             )
 
-        self.index_dir.mkdir(parents=True, exist_ok=True)
-        self._faiss.write_index(self.index, str(self.index_path))
         payload = {
             "documents": [document_to_dict(document) for document in self.documents],
             "faiss_ids": self._faiss_ids,
         }
-        self.documents_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        documents_json = json.dumps(payload, ensure_ascii=False, indent=2)
+
+        # Write both files aside first so a failure mid-save (disk full,
+        # unserializable metadata) leaves the previously saved index intact.
+        self.index_dir.mkdir(parents=True, exist_ok=True)
+        index_tmp = self.index_path.with_name(self.index_path.name + ".tmp")
+        documents_tmp = self.documents_path.with_name(self.documents_path.name + ".tmp")
+        self._faiss.write_index(self.index, str(index_tmp))
+        documents_tmp.write_text(documents_json, encoding="utf-8")
+        os.replace(index_tmp, self.index_path)
+        os.replace(documents_tmp, self.documents_path)
 
     def load(self) -> None:
         if not self.index_path.exists() or not self.documents_path.exists():

@@ -491,3 +491,32 @@ class FaissIndexingIntegrationTests(unittest.TestCase):
             store = repository.load_store()
             self.assertEqual([document.id for document in store.documents], ["b.md:0000"])
             self.assertEqual(set(repository.load_manifest().files), {"b.md"})
+
+    def test_failed_full_rebuild_keeps_previous_index(self) -> None:
+        class FailingEmbedder:
+            def embed_texts(self, texts):
+                raise RuntimeError("model download failed")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_dir = Path(temp_dir) / "documents"
+            source_dir.mkdir()
+            (source_dir / "a.txt").write_text(THREE_PARAGRAPHS, encoding="utf-8")
+            repository = FaissIndexRepository(Path(temp_dir) / "index")
+
+            def indexer(embedder) -> DocumentIndexer:
+                return DocumentIndexer(
+                    embedding_model=embedder,
+                    sources=DocumentDirectory(source_dir),
+                    index=repository,
+                    chunk_size=CHUNK_SIZE,
+                    chunk_overlap=CHUNK_OVERLAP,
+                )
+
+            self.assertEqual(indexer(CountingEmbedder()).ingest(), 3)
+            (source_dir / "b.md").write_text(SHORT_NOTE, encoding="utf-8")
+
+            with self.assertRaises(RuntimeError):
+                indexer(FailingEmbedder()).ingest(incremental=False)
+
+            self.assertEqual(repository.load_store().count(), 3)
+            self.assertEqual(set(repository.load_manifest().files), {"a.txt"})
