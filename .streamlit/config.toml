@@ -1,9 +1,30 @@
 [theme]
-primaryColor = "#7C4DFF"
-backgroundColor = "#0E1117"
-secondaryBackgroundColor = "#1A1F2E"
-textColor = "#E1E3E8"
-font = "sans serif"
+base = "dark"
+primaryColor = "#E2A54B"
+backgroundColor = "#111317"
+secondaryBackgroundColor = "#1E2228"
+textColor = "#ECE8E1"
+borderColor = "#2A3039"
+linkColor = "#F0BC6C"
+redColor = "#EE7070"
+orangeColor = "#E58A4E"
+greenColor = "#7CC495"
+blueColor = "#8AB4E8"
+font = "'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif"
+headingFont = "'Sitka Heading', 'Sitka Text', Charter, 'Bitstream Charter', Cambria, Georgia, serif"
+codeFont = "'Cascadia Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, Consolas, monospace"
+baseFontSize = 15
+baseRadius = "8px"
+buttonRadius = "8px"
+showWidgetBorder = true
+showSidebarBorder = true
+
+[theme.sidebar]
+backgroundColor = "#0D0F12"
+secondaryBackgroundColor = "#171A1F"
+
+[client]
+toolbarMode = "minimal"
 
 [server]
 fileWatcherType = "none"
