@@ -94,8 +94,10 @@ def _render_citation_card(
     )
 
     with st.expander("Полный текст фрагмента", icon=":material/notes:"):
-        # PDF extraction leaves line breaks between words; read it as one flow.
-        full_text = html.escape(" ".join(citation.text.split()))
+        # PDF extraction leaves line breaks between words, so read PDFs as one
+        # flow; other formats keep their line breaks (paragraphs, lists).
+        text = " ".join(citation.text.split()) if extension == ".pdf" else citation.text.strip()
+        full_text = html.escape(text).replace("\n", "<br>")
         render_html(f'<p class="citation-full">{full_text}</p>')
 
 

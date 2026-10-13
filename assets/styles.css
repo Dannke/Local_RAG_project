@@ -302,14 +302,14 @@ code {
 
 /* Thread fills the viewport; the question box sits right under it.
  * Streamlit puts the fixed height on the wrapper, so override it there. */
-[data-testid="stLayoutWrapper"]:has(> .st-key-chat-thread),
+:has(> .st-key-chat-thread),
 .st-key-chat-thread {
   height: calc(100dvh - 15.5rem) !important;
   min-height: 18rem;
 }
 
-/* Streamlit sizes the wrapper through flex-basis, not height. */
-[data-testid="stLayoutWrapper"]:has(> .st-key-chat-thread) {
+/* Streamlit sizes the wrapper (whatever its testid) through flex-basis, not height. */
+:has(> .st-key-chat-thread) {
   flex: 0 0 auto !important;
 }
 
@@ -922,7 +922,7 @@ div[role="dialog"] p {
     overflow: visible;
   }
 
-  [data-testid="stLayoutWrapper"]:has(> .st-key-chat-thread),
+  :has(> .st-key-chat-thread),
   .st-key-chat-thread {
     height: calc(100dvh - 16.5rem) !important;
   }
