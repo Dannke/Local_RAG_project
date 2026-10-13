@@ -8,7 +8,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from rag_project.pipelines.search_pipeline import search_index  # noqa: E402
+from rag_project.bootstrap import search_index  # noqa: E402
+from rag_project.cli import print_search_results  # noqa: E402
 
 
 def main() -> int:
@@ -19,12 +20,7 @@ def main() -> int:
     question = sys.argv[1]
     index_dir = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / "data" / "vector_store"
 
-    results = search_index(question, index_dir=index_dir)
-    for number, result in enumerate(results, start=1):
-        source = result.document.metadata.get("relative_path", result.document.id)
-        print(f"[{number}] score={result.score:.4f} source={source}")
-        print(result.document.text[:700].strip())
-        print()
+    print_search_results(search_index(question, index_dir=index_dir))
     return 0
 
 

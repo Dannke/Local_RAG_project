@@ -1,10 +1,12 @@
 import tempfile
 import unittest
+from pathlib import Path
 
-from rag_project.models import Document
-from rag_project.pipelines.index_manifest import IndexManifest, SourceFileRecord
-from rag_project.pipelines.ingest_pipeline import delete_document_from_index
-from rag_project.vectorstores.faiss_store import FaissVectorStore
+from rag_project.application.indexing import remove_document
+from rag_project.domain.manifest import IndexManifest, SourceFileRecord
+from rag_project.domain.models import Document
+from rag_project.infrastructure.faiss_store import FaissVectorStore
+from rag_project.infrastructure.index_storage import FaissIndexRepository
 
 
 class FaissVectorStoreTests(unittest.TestCase):
@@ -34,7 +36,7 @@ class FaissVectorStoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = FaissVectorStore(temp_dir)
             store.add([Document(id="a", text="alpha document")], [[1.0, 0.0]])
-            store.save_to_disk()
+            store.save()
 
             loaded = FaissVectorStore.load_from_disk(temp_dir)
 
@@ -83,7 +85,7 @@ class FaissVectorStoreTests(unittest.TestCase):
                 ],
             )
             store.remove_ids(["b"])
-            store.save_to_disk()
+            store.save()
 
             loaded = FaissVectorStore.load_from_disk(temp_dir)
             self.assertEqual(loaded.count(), 2)
@@ -132,7 +134,7 @@ class DeleteDocumentFromIndexTests(unittest.TestCase):
                 [0.0, 1.0],
             ],
         )
-        store.save_to_disk()
+        store.save()
         manifest = IndexManifest(
             files={
                 "docs/manual.pdf": SourceFileRecord(
@@ -145,29 +147,60 @@ class DeleteDocumentFromIndexTests(unittest.TestCase):
                 ),
             }
         )
-        manifest.save(index_dir)
+        FaissIndexRepository(index_dir).save_manifest(manifest)
         return store
 
     def test_delete_removes_only_target_chunks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             self._seed_index(temp_dir)
 
-            removed = delete_document_from_index(temp_dir, "docs/readme.md")
+            removed = remove_document(FaissIndexRepository(temp_dir), "docs/readme.md")
 
             self.assertEqual(removed, 1)
             store = FaissVectorStore.load_from_disk(temp_dir)
             self.assertEqual(store.count(), 1)
             self.assertEqual(store.documents[0].id, "docs/manual.pdf")
 
-            manifest = IndexManifest.load(temp_dir)
+            manifest = FaissIndexRepository(temp_dir).load_manifest()
             self.assertNotIn("docs/readme.md", manifest.files)
             self.assertIn("docs/manual.pdf", manifest.files)
 
     def test_delete_unknown_file_returns_zero(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             self._seed_index(temp_dir)
-            self.assertEqual(delete_document_from_index(temp_dir, "missing.txt"), 0)
+            self.assertEqual(remove_document(FaissIndexRepository(temp_dir), "missing.txt"), 0)
 
     def test_delete_without_index_returns_zero(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            self.assertEqual(delete_document_from_index(temp_dir, "x.pdf"), 0)
+            self.assertEqual(remove_document(FaissIndexRepository(temp_dir), "x.pdf"), 0)
+
+    def test_delete_with_unreadable_manifest_still_removes_vectors(self) -> None:
+        # Regression: an unreadable manifest has no record for the file, so the
+        # chunks must be found by metadata instead of silently staying indexed.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self._seed_index(temp_dir)
+            (Path(temp_dir) / "manifest.json").write_text("{broken", encoding="utf-8")
+
+            with self.assertLogs(level="WARNING"):
+                removed = remove_document(FaissIndexRepository(temp_dir), "docs/readme.md")
+
+            self.assertEqual(removed, 1)
+            store = FaissVectorStore.load_from_disk(temp_dir)
+            self.assertEqual([doc.id for doc in store.documents], ["docs/manual.pdf"])
+
+
+class AtomicSaveTests(unittest.TestCase):
+    def test_failed_save_leaves_previous_index_loadable(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = FaissVectorStore(temp_dir)
+            store.add([Document(id="a", text="alpha"), Document(id="b", text="beta")],
+                      [[1.0, 0.0], [0.0, 1.0]])
+            store.save()
+            # A set is not JSON-serializable, so saving this document fails.
+            store.add([Document(id="c", text="gamma", metadata={"bad": {1}})], [[1.0, 1.0]])
+
+            with self.assertRaises(TypeError):
+                store.save()
+
+            loaded = FaissVectorStore.load_from_disk(temp_dir)
+            self.assertEqual(sorted(doc.id for doc in loaded.documents), ["a", "b"])

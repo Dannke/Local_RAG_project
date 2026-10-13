@@ -1,7 +1,8 @@
 import unittest
 
-from rag_project.llm.llm_client import OpenRouterClient
-from rag_project.rate_limit import RateLimiter, RateLimitExceededError
+from rag_project.domain.errors import LLMClientError
+from rag_project.infrastructure.openrouter import OpenRouterClient
+from rag_project.infrastructure.rate_limit import RateLimiter, RateLimitExceededError
 
 try:
     from types import SimpleNamespace
@@ -72,6 +73,11 @@ class RateLimiterLLMIntegrationTests(unittest.TestCase):
         client.generate_answer("Q", ["ctx"])
         with self.assertRaises(RateLimitExceededError):
             client.generate_answer("Q", ["ctx"])
+
+    def test_rate_limit_error_is_handled_as_llm_client_error(self) -> None:
+        # The UI and the CLI chat loop recover from LLMClientError, so a rate
+        # limit hit shows a message instead of a traceback.
+        self.assertTrue(issubclass(RateLimitExceededError, LLMClientError))
 
     def test_disabled_when_no_limiter(self) -> None:
         client = OpenRouterClient(

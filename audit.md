@@ -287,8 +287,45 @@ messages.json + sources.json
 | **DOCX без номеров страниц** | Все чанки DOCX имеют `page=1` |
 | **Требует OpenRouter API Key** | Без ключа LLM не работает (ошибка в UI) |
 | **Только CPU FAISS** | `faiss-cpu` в зависимостях, GPU не используется |
-| **Нет авторизации** | Однопользовательский, локальный доступ |
-| **Нет оценки качества (eval)** | Нет встроенных метрик RAGAS и т.п. |
+| **Нет авторизации на уровне приложения** | Компенсируется на сетевом уровне после переноса на VPS — порт слушает только `127.0.0.1`, наружу не публикуется (см. «Продакшн-развёртывание») |
+| ~~Нет оценки качества (eval)~~ Решено | Появился baseline (`eval/baseline_results.json`) — retrieval-метрики и LLM-judge, см. «Продакшн-развёртывание» |
+
+---
+
+## Продакшн-развёртывание (VPS)
+
+Проект перенесён с локальной машины на VPS и работает там в контейнере Docker.
+
+### Инфраструктура
+
+| Параметр | Значение |
+|----------|----------|
+| **Хостинг** | VPS (Ubuntu/Debian), тот же сервер, что и личный AmneziaVPN |
+| **Оркестрация** | Docker Compose (сервис `rag-app`) |
+| **Пользователь в контейнере** | Непривилегированный `raguser` (UID 1000), не root |
+| **Публичные порты** | Отсутствуют — порт 8501 забинден только на `127.0.0.1` внутри VPS |
+| **Доступ** | SSH локальный проброс порта (`ssh -L 8501:localhost:8501` / вкладка Tunnels в PuTTY) — не через Amnezia-туннель и не через Tailscale/Cloudflare, из-за сложностей с NAT/iptables у контейнеров Amnezia |
+| **Персистентность** | Именованные Docker-volume: `rag_data` (`/app/data` — чаты, документы, индексы), `hf_cache` (кэш моделей HuggingFace), `rag_logs` (`/data/logs` — структурированные логи) |
+| **Логирование** | JSON-логи (`RAG_STRUCTURED_LOGGING=true`) в `/data/logs/app.log`, ротация (10 МБ, 5 бэкапов) |
+| **Health check** | Docker `healthcheck:` → `/_stcore/health` (встроенный эндпоинт Streamlit) + отдельный диагностический `scripts/health_check.py` |
+| **Rate limiting** | `RATE_LIMIT_MAX_REQUESTS` / `RATE_LIMIT_WINDOW_SECONDS` (опционально, по умолчанию выключен) |
+| **Бэкапы** | Cron, ежедневный дамп volume `rag_data` через `docker run ... tar czf` |
+| **Eval baseline** | `eval/baseline_results.json` — retrieval-метрики + LLM-judge |
+
+### Проблемы, найденные и исправленные при переносе
+
+При миграции на VPS вскрылось несколько багов, невидимых при локальном запуске (`streamlit run app.py` напрямую, без Docker):
+
+1. **Dockerfile: `chown` выполнялся до создания `/data`** — `useradd ... && chown -R raguser:raguser /app /data` падал, потому что `/data` появляется только благодаря volume во время **запуска** контейнера, а не во время **сборки** образа. Исправлено добавлением `mkdir -p /data/logs /data/.cache/huggingface` перед `chown`.
+2. **Dockerfile: отсутствовал `COPY scripts/`** — вспомогательные скрипты (включая `health_check.py`) не попадали в образ, `docker compose exec rag-app python scripts/health_check.py` падал с `FileNotFoundError`.
+3. **Права на кэш HuggingFace** — `/data/.cache/huggingface` монтировался как volume с владельцем `root`, а приложение работает от `raguser` → `PermissionError` при первой попытке скачать модель эмбеддингов.
+4. **`health_check.py` проверял только legacy-путь** — по умолчанию смотрел в общий `data/vector_store/`, хотя реальные индексы лежат по чатам (`data/chats/<id>/index/`). Добавлена функция `find_index_dir`, автоматически находящая актуальный per-chat индекс.
+5. **Калибровка Relevance у источников** — `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` возвращает сырой logit (диапазон примерно −10…10), а не готовую вероятность 0–1; при прямом клэмпинге в проценты все источники показывали 0%. Исправлено: logit → sigmoid → относительная нормализация min/max **внутри одного ответа** (лучший из показанных источников = 100%, худший = 0%) — точнее отражает суть модели, которая хороша в ранжировании, но плохо откалибрована по абсолютной шкале, особенно на машинно-переведённом (mMARCO) русском тексте.
+6. **`docker-compose.yml`: не было volume под логи** — изначально маппился только `hf_cache`, из-за чего `/data/logs` жил только внутри контейнера и терялся при пересборке. Добавлен volume `rag_logs`.
+
+### Изменение архитектуры доступа
+
+Изначальный план предполагал Tailscale или Cloudflare Tunnel по аналогии с уже работающим на этом сервере Amnezia VPN. От этого отказались в пользу SSH-туннеля: Amnezia поднимает 6 отдельных контейнеров-протоколов (IPsec, WireGuard, Shadowsocks, AWG, AWG2, Xray) со своей маршрутизацией/NAT, а правила `ufw` для Docker-контейнеров ненадёжны — Docker вставляет собственные iptables-правила в цепочку `FORWARD` раньше, чем их видит `ufw`. SSH-проброс порта проще, не требует правок firewall/iptables и использует уже имеющийся канал доступа к серверу.
 
 ---
 
@@ -300,15 +337,22 @@ Local_RAG_project/
 ├── pyproject.toml            # Package config, deps, scripts
 ├── requirements.txt          # Зависимости (pip)
 ├── .env.example              # Шаблон переменных окружения
-├── .env                      # Локальные настройки (не в git)
+├── .env                      # Настройки на VPS (chmod 600, не в git)
+├── .dockerignore
+├── Dockerfile                # Multi-stage build, non-root raguser (UID 1000)
+├── docker-compose.yml        # Сервис rag-app, volumes: rag_data, hf_cache, rag_logs
+├── DEPLOYMENT.md             # Гайд по развёртыванию на VPS
 ├── README.md                 # Документация пользователя
 ├── audit.md                  # Этот файл
 ├── assets/
 │   └── styles.css            # Кастомные стили Streamlit
+├── eval/
+│   └── baseline_results.json # Baseline retrieval-метрик + LLM-judge
 ├── data/
 │   ├── raw/                  # Загруженные исходные документы (global)
 │   ├── processed/            # (пусто, зарезервировано)
 │   ├── vector_store/         # Глобальный FAISS индекс (legacy)
+│   ├── logs/                 # JSON-логи приложения (volume rag_logs на VPS)
 │   └── chats/                # Чат-сессии (новое)
 │       └── chat_XXX/
 │           ├── meta.json
@@ -319,7 +363,8 @@ Local_RAG_project/
 ├── scripts/
 │   ├── ingest.py
 │   ├── query.py
-│   └── chat.py
+│   ├── chat.py
+│   └── health_check.py       # Diagnostика: диск, индекс, retrieval, LLM
 ├── src/
 │   └── rag_project/
 │       ├── __init__.py
@@ -415,6 +460,19 @@ streamlit run app.py
 .\.venv\Scripts\python.exe -m rag_project.cli chat --index data/vector_store
 ```
 
+### Запуск на VPS (Docker)
+
+Актуальный способ эксплуатации проекта — не локальный venv, а Docker Compose на VPS (подробности — «Продакшн-развёртывание» выше, полный гайд — `DEPLOYMENT.md`):
+
+```bash
+docker compose up -d --build          # собрать и запустить
+docker compose logs -f                # логи в реальном времени
+docker compose exec rag-app python scripts/health_check.py   # диагностика
+docker compose exec rag-app python scripts/ingest.py          # индексация из CLI
+```
+
+Доступ к UI — через SSH-туннель (`ssh -L 8501:localhost:8501 user@vps-ip`), приложение снаружи недоступно.
+
 ---
 
 ## Тестирование
@@ -461,5 +519,7 @@ streamlit run app.py
 - ✅ CLI для автоматизации
 - ✅ Чёткой модульной архитектурой (Protocols, DI)
 - ✅ Тестами и линтером
+- ✅ Задеплоен в продакшн на VPS через Docker Compose — non-root контейнер, персистентные volumes, структурированное логирование, health check, backup по cron, eval baseline
+- ✅ Доступ изолирован на сетевом уровне (SSH-туннель, порт не публикуется наружу)
 
-Проект подходит для локального анализа документов, поиска знаний и QA над приватными данными без утечки во внешние облака (кроме вызова LLM через OpenRouter).
+Проект подходит для локального анализа документов, поиска знаний и QA над приватными данными без утечки во внешние облака (кроме вызова LLM через OpenRouter). С переносом на VPS также обеспечена доступность из любой точки (через SSH-туннель), а не только с локальной машины.

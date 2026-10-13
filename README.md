@@ -69,12 +69,29 @@ rendered page numbers, so they are marked as page `1` unless richer metadata is
 added later. Rebuild the index after this update to write page metadata into
 `data/vector_store/documents.json`.
 
-The UI is a thin layer over the existing backend:
+The UI is a thin presentation layer: it calls the use cases through the
+composition root (`rag_project.bootstrap`) and holds no indexing or retrieval
+logic of its own.
 
-- document loading and chunking use the existing ingest pipeline
-- embeddings use sentence-transformers
-- retrieval uses the existing FAISS vector store
-- chat uses the existing retrieval plus OpenRouter LLM pipeline
+## Architecture
+
+The package follows Clean Architecture; dependencies only point inward:
+
+```text
+domain  <-  application  <-  infrastructure  <-  ui / cli / bootstrap
+```
+
+| Layer | Package | Contents |
+|-------|---------|----------|
+| Domain | `rag_project.domain` | Entities and pure rules: `Document`, `SearchResult`, chunking, citations, prompt policy, index manifest diffing, error types. Standard library only. |
+| Application | `rag_project.application` | Use cases: `ChatSession` (retrieve → rerank → cite → generate), `DocumentIndexer` (full / incremental indexing), `remove_document`; the ports (`Protocol`s) they need. |
+| Infrastructure | `rag_project.infrastructure` | Adapters: FAISS store, sentence-transformers embedder (lazy), cross-encoder reranker, OpenRouter client, file loaders, per-index storage layout, chat persistence, rate limiter. |
+| Composition root | `rag_project.bootstrap` | The only place that wires adapters to use cases (`create_chat_session`, `ingest_to_faiss`, `search_index`, ...). |
+| Presentation | `rag_project.ui`, `rag_project.cli` | Streamlit pages and the CLI; `app.py` is the Streamlit entry point. |
+
+`tests/test_architecture.py` enforces the dependency rule and keeps the domain
+and application layers free of third-party imports. Use cases are tested with
+in-memory fakes of the ports, without loading ML models.
 
 ## CLI
 

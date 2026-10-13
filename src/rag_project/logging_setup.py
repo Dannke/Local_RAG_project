@@ -1,9 +1,10 @@
 """Structured logging setup and request (trace) context helpers.
 
 The app logs a JSON record per event when ``RAG_STRUCTURED_LOGGING`` is
-enabled, which is useful for collecting metrics / eval data on a VPS. A
-per-request id is propagated via ``contextvars`` so every log line emitted
-while answering one question can be correlated in a log aggregator.
+enabled, which is useful for collecting metrics / eval data on a VPS. Every
+record carries the per-request id bound by the use cases (see
+``rag_project.application.observability``) so all lines emitted while
+answering one question can be correlated in a log aggregator.
 """
 
 from __future__ import annotations
@@ -13,11 +14,9 @@ import logging
 import logging.handlers
 import os
 import time
-import uuid
-from contextvars import ContextVar
 from pathlib import Path
 
-RequestIdVar: ContextVar[str] = ContextVar("rag_request_id", default="")
+from rag_project.application.observability import request_id_var
 
 _RESERVED_ATTRS = frozenset(
     {
@@ -51,7 +50,7 @@ class RequestIdFilter(logging.Filter):
     """Add the current request id and timestamps to every log record."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        record.rag_request_id = RequestIdVar.get() or "-"
+        record.rag_request_id = request_id_var.get() or "-"
         record.epoch_ms = int(time.time() * 1000)
         return True
 
@@ -139,14 +138,3 @@ def _build_formatter() -> logging.Formatter:
     return logging.Formatter(
         "%(asctime)s %(levelname)s %(name)s [request=%(rag_request_id)s] %(message)s"
     )
-
-
-def new_request_id() -> str:
-    """Create (and bind) a fresh request id for the current async context."""
-    request_id = uuid.uuid4().hex[:12]
-    RequestIdVar.set(request_id)
-    return request_id
-
-
-def get_logger(name: str) -> logging.Logger:
-    return logging.getLogger(name)

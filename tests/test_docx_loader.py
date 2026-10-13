@@ -4,7 +4,7 @@ from pathlib import Path
 
 from docx import Document as DocxDocument
 
-from rag_project.ingestion.loaders import extract_docx_text, load_documents
+from rag_project.infrastructure.loaders import extract_docx_text, load_documents
 
 
 class DocxLoaderTests(unittest.TestCase):

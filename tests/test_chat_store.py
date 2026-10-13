@@ -5,7 +5,7 @@ import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 
-from rag_project.chat_store import (
+from rag_project.infrastructure.chat_store import (
     chats_root,
     create_chat,
     delete_chat,
