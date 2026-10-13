@@ -1,7 +1,8 @@
-"""Chat page: chat list (left), conversation (center), sources (right)."""
+"""Chat page: conversation (left) and the sources of the last answer (right)."""
 
 from __future__ import annotations
 
+import html
 import logging
 from pathlib import Path
 
@@ -16,20 +17,19 @@ from rag_project.domain.errors import (
     LLMTimeoutError,
     MissingAPIKeyError,
 )
-from rag_project.infrastructure.chat_store import (
-    ChatMeta,
-    create_chat,
-    delete_chat,
-    list_chats,
-    rename_chat,
-    save_messages,
-    save_search_results,
-    save_sources,
-)
+from rag_project.infrastructure.chat_store import save_messages, save_search_results
 from rag_project.infrastructure.rate_limit import RateLimitExceededError
+from rag_project.ui.formatting import plural_ru
 from rag_project.ui.sources_panel import render_sources_panel
-from rag_project.ui.state import activate_chat
-from rag_project.ui.theme import ASSISTANT_AVATAR, USER_AVATAR, chat_avatar, render_html
+from rag_project.ui.theme import (
+    ASSISTANT_AVATAR,
+    TYPING_INDICATOR_HTML,
+    USER_AVATAR,
+    chat_avatar,
+    empty_state_html,
+    render_html,
+    render_page_header,
+)
 from rag_project.ui.workspace import ChatWorkspace
 
 logger = logging.getLogger(__name__)
@@ -44,147 +44,91 @@ _LLM_ERROR_TITLES: tuple[tuple[type[LLMClientError], str], ...] = (
 )
 
 
-def render_chat_page(
-    settings: Settings,
-    workspace: ChatWorkspace,
-    chat_root: Path,
-    chats: list[ChatMeta],
-) -> None:
-    # Column weights: left (chat list) 15% · center (chat) 60% · right (sources) 25%
-    left_panel, center_panel, right_panel = st.columns([1, 4, 1.67], gap="medium")
+def render_chat_page(settings: Settings, workspace: ChatWorkspace) -> None:
+    with st.container(key="chat-layout"):
+        center_panel, right_panel = st.columns([2.3, 1], gap="large")
 
-    with left_panel:
-        _render_chat_list(chat_root, chats, workspace.chat)
+        with center_panel:
+            _render_conversation(settings, workspace)
 
-    with center_panel:
-        _render_conversation(settings, workspace)
-
-    with right_panel:
-        render_sources_panel(st.session_state.last_context)
-
-
-# ─────────────────────────── Left panel ───────────────────────────
-
-
-def _render_chat_list(chat_root: Path, chats: list[ChatMeta], active_chat: ChatMeta) -> None:
-    """Chat management: new chat, search, select, rename, delete, clear."""
-    render_html('<h2 style="font-size:1.1rem;margin-bottom:0.75rem;">Чаты</h2>')
-    if st.button("+ Новый чат", use_container_width=True, type="primary"):
-        activate_chat(create_chat(chat_root).id)
-        st.rerun()
-
-    search_query = (
-        st.text_input("Поиск чатов", placeholder="Найти чат...", label_visibility="collapsed")
-        .strip()
-        .lower()
-    )
-    visible_chats = [
-        chat for chat in chats if not search_query or search_query in chat.title.lower()
-    ]
-    if search_query and not visible_chats:
-        st.caption("Чаты не найдены")
-
-    for chat in visible_chats:
-        _render_chat_row(chat_root, chat, active_chat)
-
-    render_html("<br>")
-    with st.form("rename_active_chat"):
-        new_title = st.text_input("Название активного чата", value=active_chat.title)
-        renamed = st.form_submit_button("Переименовать", use_container_width=True)
-    if renamed:
-        rename_chat(chat_root, active_chat.id, new_title)
-        st.rerun()
-
-    if st.button("Очистить чат", use_container_width=True):
-        st.session_state.messages = []
-        st.session_state.last_context = []
-        save_messages(active_chat.path, [])
-        save_sources(active_chat.path, [])
-        st.rerun()
-
-
-def _render_chat_row(chat_root: Path, chat: ChatMeta, active_chat: ChatMeta) -> None:
-    is_active = chat.id == active_chat.id
-    title = f"● {chat.title}" if is_active else chat.title
-    col_chat, col_delete = st.columns([5, 1])
-    if col_chat.button(
-        title,
-        key=f"select_chat_{chat.id}",
-        use_container_width=True,
-        type="primary" if is_active else "secondary",
-        disabled=is_active,
-    ):
-        activate_chat(chat.id)
-        st.rerun()
-
-    if col_delete.button("×", key=f"delete_chat_{chat.id}", help="Удалить чат"):
-        st.session_state.delete_chat_id = chat.id
-        st.rerun()
-
-    if st.session_state.delete_chat_id != chat.id:
-        return
-
-    st.warning(f"Удалить чат «{chat.title}»?")
-    confirm_col, cancel_col = st.columns(2)
-    if confirm_col.button("Да", key=f"confirm_delete_chat_{chat.id}"):
-        delete_chat(chat_root, chat.id)
-        remaining = list_chats(chat_root) or [create_chat(chat_root)]
-        remaining_by_id = {remaining_chat.id: remaining_chat for remaining_chat in remaining}
-        next_chat = remaining_by_id.get(active_chat.id, remaining[0])
-        st.session_state.delete_chat_id = None
-        activate_chat(next_chat.id)
-        st.rerun()
-    if cancel_col.button("Нет", key=f"cancel_delete_chat_{chat.id}"):
-        st.session_state.delete_chat_id = None
-        st.rerun()
-
-
-# ─────────────────────────── Center panel ─────────────────────────
+        with right_panel, st.container(key="sources-panel"):
+            render_sources_panel(st.session_state.last_context)
 
 
 def _render_conversation(settings: Settings, workspace: ChatWorkspace) -> None:
-    """Message history, question form and the streamed answer."""
-    st.markdown("### Чат")
+    """Message history, the pinned question box and the streamed answer."""
+    messages = st.session_state.messages
+    documents = len(workspace.documents.list_files())
+    render_page_header(
+        html.escape(workspace.chat.title),
+        plural_ru(documents, "документ", "документа", "документов") + " в базе знаний",
+    )
 
     if not workspace.index.exists():
-        st.info("ℹ️ Сначала загрузите документы и создайте индекс.")
-        return
-
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"], avatar=chat_avatar(message["role"])):
-            st.markdown(message["content"])
-
-    with st.form("question_form", clear_on_submit=True):
-        question = st.text_input(
-            "Вопрос",
-            placeholder="Задайте вопрос о документе…",
-            label_visibility="collapsed",
+        render_html(
+            empty_state_html(
+                "Сначала нужен индекс",
+                "Загрузите документы на странице «Документы» и нажмите «Индексировать». "
+                "После этого здесь можно будет задавать вопросы.",
+                mark="§",
+            )
         )
-        submitted = st.form_submit_button("➤ Отправить", type="primary")
-
-    if not submitted:
-        return
-    if not question or not question.strip():
-        st.warning("⚠️ Введите вопрос перед отправкой.")
         return
 
+    thread = st.container(key="chat-thread", height=560)
+    with thread:
+        empty_slot = st.empty()
+        if not messages:
+            empty_slot.markdown(
+                empty_state_html(
+                    "Спросите о своих документах",
+                    "Ответ строится только по документам этого чата. "
+                    "Фрагменты, на которые он опирается, появятся справа как S1, S2…",
+                    mark="?",
+                ),
+                unsafe_allow_html=True,
+            )
+        for message in messages:
+            with st.chat_message(message["role"], avatar=chat_avatar(message["role"])):
+                st.markdown(message["content"])
+
+    question = st.chat_input("Задайте вопрос о документах…")
+    if question is None:
+        return
     question = question.strip()
+    if not question:
+        st.warning("Введите вопрос перед отправкой.")
+        return
+
     chat_path = workspace.chat.path
-    _append_message(chat_path, "user", question)
-    with st.chat_message("user", avatar=USER_AVATAR):
-        st.markdown(question)
+    empty_slot.empty()
+    with thread:
+        _append_message(chat_path, "user", question)
+        with st.chat_message("user", avatar=USER_AVATAR):
+            st.markdown(question)
+        _answer(settings, workspace, question)
+
+
+def _answer(settings: Settings, workspace: ChatWorkspace, question: str) -> None:
+    chat_path = workspace.chat.path
+    pending = st.empty()
+    with pending.container(), st.chat_message("assistant", avatar=ASSISTANT_AVATAR):
+        answer_box = st.empty()
+        answer_box.markdown(TYPING_INDICATOR_HTML, unsafe_allow_html=True)
 
     try:
         session = _get_chat_session(settings, workspace.index_dir)
-        with st.spinner("Ищу контекст, ранжирую источники и запрашиваю LLM..."):
-            response = session.stream(question, top_k=int(st.session_state.top_k))
+        response = session.stream(question, top_k=int(st.session_state.top_k))
     except LLMClientError as exc:
+        pending.empty()
         _show_llm_error(exc, chat_path)
         return
     except FileNotFoundError:
+        pending.empty()
         st.error("Индекс не найден. Сначала выполните индексацию.")
         return
     except Exception as exc:
+        pending.empty()
         logger.exception("chat_question_failed")
         st.error(f"Ошибка обработки вопроса: {exc}")
         return
@@ -192,18 +136,22 @@ def _render_conversation(settings: Settings, workspace: ChatWorkspace) -> None:
     st.session_state.last_context = response.results
     save_search_results(chat_path, response.results)
 
-    with st.chat_message("assistant", avatar=ASSISTANT_AVATAR):
-        answer_box = st.empty()
-        answer_box.markdown("печатает...")
-        answer = ""
-        try:
-            for token in response.chunks:
-                answer += token
-                answer_box.markdown(answer + "▌")
-            answer_box.markdown(answer)
-        except LLMClientError as exc:
-            _show_llm_error(exc, chat_path)
-            return
+    answer = ""
+    text_box = None
+    try:
+        for token in response.chunks:
+            answer += token
+            if text_box is None:
+                # The keyed wrapper draws the caret in CSS, so the answer
+                # itself stays plain markdown without unsafe HTML.
+                with answer_box.container(key="answer-streaming"):
+                    text_box = st.empty()
+            text_box.markdown(answer)
+    except LLMClientError as exc:
+        answer_box.markdown(answer)  # drop the caret from the partial answer
+        _show_llm_error(exc, chat_path)
+        return
+    answer_box.markdown(answer)
 
     _append_message(chat_path, "assistant", answer)
 

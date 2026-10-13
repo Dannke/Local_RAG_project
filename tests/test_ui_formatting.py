@@ -3,10 +3,11 @@ import unittest
 from rag_project.ui.formatting import (
     citation_filename,
     citation_preview,
-    file_icon,
     file_type,
     human_size,
+    plural_ru,
     relevance_for,
+    relevance_tier,
 )
 
 EXCELLENT = ("Excellent Match", "#66bb6a")
@@ -16,18 +17,6 @@ WEAK = ("Weak Match", "#ef5350")
 
 
 class FileLabelTests(unittest.TestCase):
-    def test_file_icon_is_case_insensitive(self) -> None:
-        for extension in (".pdf", ".PDF", ".Pdf"):
-            with self.subTest(extension=extension):
-                self.assertEqual(file_icon(extension), "📄")
-        self.assertEqual(file_icon(".DOCX"), "📝")
-        self.assertEqual(file_icon(".md"), "📖")
-
-    def test_file_icon_falls_back_for_unknown_extensions(self) -> None:
-        for extension in (".xyz", "", "pdf"):
-            with self.subTest(extension=extension):
-                self.assertEqual(file_icon(extension), "📎")
-
     def test_file_type_is_case_insensitive(self) -> None:
         self.assertEqual(file_type(".MD"), "Markdown")
         self.assertEqual(file_type(".txt"), "Text")
@@ -120,3 +109,42 @@ class CitationTests(unittest.TestCase):
         self.assertTrue(preview.endswith("…"))
         self.assertLessEqual(len(preview), 261)
         self.assertTrue(preview.startswith("word word"))
+
+
+class RelevanceTierTests(unittest.TestCase):
+    def test_every_relevance_label_has_a_display_tier(self) -> None:
+        cases = {
+            0.9: ("excellent", "высокая"),
+            0.7: ("good", "хорошая"),
+            0.5: ("moderate", "средняя"),
+            0.1: ("weak", "слабая"),
+        }
+        for score, expected in cases.items():
+            with self.subTest(score=score):
+                _, label, _ = relevance_for(score, 0.0, 1.0)
+                self.assertEqual(relevance_tier(label), expected)
+
+    def test_unknown_label_falls_back_to_weak(self) -> None:
+        self.assertEqual(relevance_tier("Something else"), ("weak", "слабая"))
+
+
+class PluralRuTests(unittest.TestCase):
+    def test_noun_forms(self) -> None:
+        cases = {
+            0: "0 чатов",
+            1: "1 чат",
+            2: "2 чата",
+            4: "4 чата",
+            5: "5 чатов",
+            11: "11 чатов",
+            12: "12 чатов",
+            14: "14 чатов",
+            21: "21 чат",
+            22: "22 чата",
+            25: "25 чатов",
+            101: "101 чат",
+            111: "111 чатов",
+        }
+        for count, expected in cases.items():
+            with self.subTest(count=count):
+                self.assertEqual(plural_ru(count, "чат", "чата", "чатов"), expected)

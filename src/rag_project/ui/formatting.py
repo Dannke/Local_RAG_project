@@ -5,14 +5,6 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
-_FILE_ICONS = {
-    ".pdf": "📄",
-    ".docx": "📝",
-    ".doc": "📝",
-    ".txt": "📋",
-    ".md": "📖",
-}
-
 _FILE_TYPES = {
     ".pdf": "PDF",
     ".docx": "DOCX",
@@ -28,10 +20,6 @@ _RELEVANCE_TIERS = (
     (0.40, "Moderate Match", "#ffa726"),  # amber
     (0.00, "Weak Match", "#ef5350"),  # red
 )
-
-
-def file_icon(file_extension: str) -> str:
-    return _FILE_ICONS.get(file_extension.lower(), "📎")
 
 
 def file_type(file_extension: str) -> str:
@@ -78,6 +66,34 @@ def relevance_for(
             return percent, label, color
     _, label, color = _RELEVANCE_TIERS[-1]
     return percent, label, color
+
+
+# Display-only names for the tiers above: (CSS modifier, Russian label).
+_RELEVANCE_DISPLAY = {
+    "Excellent Match": ("excellent", "высокая"),
+    "Good Match": ("good", "хорошая"),
+    "Moderate Match": ("moderate", "средняя"),
+    "Weak Match": ("weak", "слабая"),
+}
+
+
+def relevance_tier(label: str) -> tuple[str, str]:
+    """(CSS modifier, Russian label) for a tier label returned by ``relevance_for``."""
+    return _RELEVANCE_DISPLAY.get(label, _RELEVANCE_DISPLAY["Weak Match"])
+
+
+def plural_ru(count: int, one: str, few: str, many: str) -> str:
+    """``count`` with the Russian noun form: 1 чат, 2 чата, 5 чатов, 21 чат."""
+    tail = abs(count) % 100
+    if 11 <= tail <= 14:
+        form = many
+    elif tail % 10 == 1:
+        form = one
+    elif 2 <= tail % 10 <= 4:
+        form = few
+    else:
+        form = many
+    return f"{count} {form}"
 
 
 def citation_filename(source: str) -> str:

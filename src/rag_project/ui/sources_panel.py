@@ -17,11 +17,12 @@ from rag_project.domain.models import SearchResult
 from rag_project.ui.formatting import (
     citation_filename,
     citation_preview,
-    file_icon,
     file_type,
+    plural_ru,
     relevance_for,
+    relevance_tier,
 )
-from rag_project.ui.theme import render_html
+from rag_project.ui.theme import empty_state_html, render_html
 
 
 def render_sources_panel(results: Sequence[SearchResult]) -> None:
@@ -41,23 +42,21 @@ def render_sources_panel(results: Sequence[SearchResult]) -> None:
 
 
 def _render_header(total: int) -> None:
+    count = plural_ru(total, "фрагмент", "фрагмента", "фрагментов") if total else "пока пусто"
     render_html(
-        '<div class="citation-panel-header">'
-        '<h3 class="citation-panel-title">📚 Sources</h3>'
-        f'<p class="citation-panel-subtitle">Total Sources: <b>{total}</b></p>'
+        '<div class="sources-header">'
+        '<h2 class="sources-title">Источники</h2>'
+        f'<span class="sources-count">{count}</span>'
         "</div>"
     )
 
 
 def _render_empty() -> None:
     render_html(
-        '<div class="citation-empty">'
-        '<div class="citation-empty-icon">📚</div>'
-        '<div class="citation-empty-title">No sources available.</div>'
-        '<div class="citation-empty-text">'
-        "Ask a question to view retrieved citations."
-        "</div>"
-        "</div>"
+        empty_state_html(
+            "Здесь будут цитаты",
+            "После ответа появятся фрагменты документов, на которых он основан.",
+        )
     )
 
 
@@ -68,48 +67,51 @@ def _render_citation_card(
 ) -> None:
     """A single citation card.
 
-    Layout: source number + filename, file type / page / chunk chips, an
-    optional relevance bar, a chunk preview and an expander with the full text.
+    Layout: the label used in the answer ([S1]…), the filename, file type / page /
+    chunk metadata, an optional relevance meter, a preview and an expander
+    with the full chunk text.
     """
     filename = citation_filename(citation.source)
+    label = html.escape(citation.label)
     extension = Path(filename).suffix.lower()
 
-    chips = [f'<span class="citation-chip"><b>{file_type(extension)}</b></span>']
+    meta = [f"<span>{file_type(extension)}</span>"]
     if citation.page:
-        chips.append(f'<span class="citation-chip">📄 <b>Page:</b> {citation.page}</span>')
-    chips.append(f'<span class="citation-chip"><b>Chunk:</b> {citation.chunk_index}</span>')
+        meta.append(f"<span>стр. {html.escape(str(citation.page))}</span>")
+    meta.append(f"<span>фрагмент {html.escape(str(citation.chunk_index))}</span>")
 
+    # --i staggers the entrance animation of consecutive cards.
     render_html(
-        '<div class="citation-card">'
-        '<div class="citation-card-head">'
-        f'<span class="citation-source-badge">Source #{index}</span>'
-        f'<span class="citation-source-name">{file_icon(extension)} '
-        f"{html.escape(filename)}</span>"
+        f'<article class="citation-card" style="--i:{index - 1}">'
+        '<div class="citation-head">'
+        f'<span class="citation-tag" title="Ссылка в ответе: [{label}]">{label}</span>'
+        f'<span class="citation-name">{html.escape(filename)}</span>'
         "</div>"
-        f'<div class="citation-meta-row">{"".join(chips)}</div>'
+        f'<div class="citation-meta">{"".join(meta)}</div>'
         f"{_relevance_html(citation.score, score_range)}"
-        f'<div class="citation-preview">{html.escape(citation_preview(citation.text))}</div>'
-        "</div>"
+        f'<p class="citation-preview">{html.escape(citation_preview(citation.text))}</p>'
+        "</article>"
     )
 
-    with st.expander("Show Full Chunk"):
-        st.write(citation.text)
+    with st.expander("Полный текст фрагмента", icon=":material/notes:"):
+        # PDF extraction leaves line breaks between words; read it as one flow.
+        full_text = html.escape(" ".join(citation.text.split()))
+        render_html(f'<p class="citation-full">{full_text}</p>')
 
 
 def _relevance_html(score: float, score_range: tuple[float | None, float | None]) -> str:
-    """Relevance bar, or an empty string when the score is unusable."""
+    """Relevance meter, or an empty string when the score is unusable."""
     relevance = relevance_for(score, *score_range)
     if relevance is None:
         return ""
-    percent, label, color = relevance
+    percent, label, _ = relevance
+    tier, tier_label = relevance_tier(label)
     return (
-        '<div class="citation-relevance">'
-        '<span class="citation-relevance-label">Relevance</span>'
-        '<span class="citation-relevance-bar">'
-        '<span class="citation-relevance-fill" '
-        f'style="width:{percent}%;background:{color};"></span>'
+        f'<div class="relevance relevance-{tier}">'
+        f'<span class="relevance-track" role="meter" aria-valuemin="0" aria-valuemax="100" '
+        f'aria-valuenow="{percent}" aria-label="Релевантность {percent}%">'
+        f'<span class="relevance-fill" style="--p:{percent / 100:.2f}"></span>'
         "</span>"
-        f'<span class="citation-relevance-value" style="color:{color};">'
-        f"{percent}% · {label}</span>"
+        f'<span class="relevance-value">{percent}% · {tier_label}</span>'
         "</div>"
     )
