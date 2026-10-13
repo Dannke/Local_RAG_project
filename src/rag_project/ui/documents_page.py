@@ -12,7 +12,7 @@ from rag_project.bootstrap import ingest_to_faiss
 from rag_project.config import Settings
 from rag_project.infrastructure.document_directory import UnsupportedDocumentError
 from rag_project.infrastructure.loaders import SUPPORTED_EXTENSIONS
-from rag_project.ui.formatting import file_icon, file_type, human_size
+from rag_project.ui.formatting import file_type, human_size, plural_ru
 from rag_project.ui.state import (
     bump_uploader_version,
     invalidate_chat_session,
@@ -20,12 +20,11 @@ from rag_project.ui.state import (
     uploader_key,
 )
 from rag_project.ui.theme import (
-    ACCENT_COLOR,
-    SUCCESS_COLOR,
-    WARNING_COLOR,
-    metric_card_html,
+    empty_state_html,
+    kpi_card_html,
     render_html,
-    render_section_divider,
+    render_page_header,
+    render_section_title,
 )
 from rag_project.ui.workspace import ChatWorkspace
 
@@ -33,59 +32,47 @@ _BYTES_PER_MB = 1024 * 1024
 
 
 def render_documents_page(settings: Settings, workspace: ChatWorkspace) -> None:
-    st.markdown("### 📚 Документы")
-    _render_dashboard(workspace)
-    render_section_divider()
+    render_page_header("Документы", f"База знаний чата «{html.escape(workspace.chat.title)}»")
+    if st.session_state.notice:
+        st.success(st.session_state.notice, icon=":material/check_circle:")
+        st.session_state.notice = None
+    documents = sorted(workspace.documents.list_files())
+    _render_dashboard(workspace, documents)
     _render_upload_section(workspace)
-    render_section_divider()
-    _render_document_cards(workspace)
-    render_section_divider()
-    _render_index_management(settings, workspace)
+    _render_document_cards(workspace, documents)
+    _render_index_management(settings, workspace, len(documents))
 
 
 # ─────────────────────────── Knowledge Base Dashboard ───────────────
 
 
-def _render_dashboard(workspace: ChatWorkspace) -> None:
-    st.markdown("#### Knowledge Base")
-
-    documents = workspace.documents.list_files()
+def _render_dashboard(workspace: ChatWorkspace, documents: list[Path]) -> None:
     index_ready = workspace.index.exists()
     stats = workspace.index.stats()
-    index_status = "Ready ✓" if index_ready else "Not created"
     index_size_mb = stats.size_bytes / _BYTES_PER_MB
-    chunks = stats.chunk_count if stats.chunk_count is not None else "N/A"
+    chunks = stats.chunk_count if stats.chunk_count is not None else "—"
 
-    cards = (
-        metric_card_html("📄 Documents", len(documents)),
-        metric_card_html("🔗 Chunks", chunks),
-        metric_card_html(
-            "⚙️ Index",
-            index_status,
-            color=SUCCESS_COLOR if index_ready else WARNING_COLOR,
-            font_size="0.95rem",
-        ),
-        metric_card_html(
-            "💾 Index Size",
-            f"{index_size_mb:.1f} MB" if index_size_mb > 0 else "N/A",
-            color=ACCENT_COLOR,
-            font_size="1.2rem",
-        ),
+    render_html(
+        '<div class="kpi-grid">'
+        + kpi_card_html("Документы", len(documents))
+        + kpi_card_html("Фрагменты", chunks)
+        + kpi_card_html(
+            "Индекс",
+            "Готов" if index_ready else "Не создан",
+            tone="ok" if index_ready else "warn",
+        )
+        + kpi_card_html("Размер индекса", f"{index_size_mb:.1f} МБ" if index_size_mb > 0 else "—")
+        + "</div>"
     )
-    for column, card in zip(st.columns(4, gap="small"), cards, strict=True):
-        with column:
-            render_html(card)
 
 
 # ─────────────────────────── Upload Section ───────────────────────────
 
 
 def _render_upload_section(workspace: ChatWorkspace) -> None:
-    st.markdown("#### Upload Documents")
+    render_section_title("Загрузка", "PDF · DOCX · TXT · MD")
 
-    col_uploader, col_badge = st.columns([4, 1])
-
-    with col_uploader:
+    with st.container(key="upload-zone"):
         uploaded_files = st.file_uploader(
             "Загрузите PDF, DOCX, TXT или MD",
             type=[extension.lstrip(".") for extension in SUPPORTED_EXTENSIONS],
@@ -93,27 +80,16 @@ def _render_upload_section(workspace: ChatWorkspace) -> None:
             label_visibility="collapsed",
             key=uploader_key(workspace.chat.id),
         )
-        if uploaded_files:
-            _save_uploaded_files(uploaded_files, workspace)
-
-    with col_badge:
-        render_html(
-            '<div style="background:#7c4dff;color:white;padding:8px 12px;border-radius:8px;'
-            'text-align:center;font-size:0.75rem;font-weight:700;">'
-            "PDF · DOCX · TXT · MD"
-            "</div>"
-        )
-
-    if st.session_state.notice:
-        st.success(st.session_state.notice)
-        st.session_state.notice = None
+    if uploaded_files:
+        _save_uploaded_files(uploaded_files, workspace)
 
     if st.session_state.uploaded_files:
-        files_list = ", ".join(html.escape(name) for name in st.session_state.uploaded_files)
+        files = "".join(
+            f'<li class="chip">{html.escape(name)}</li>' for name in st.session_state.uploaded_files
+        )
         render_html(
-            '<div style="font-size:0.82rem;color:#8b92a8;margin:0.8rem 0;'
-            'background:#1a1f2e;padding:8px 12px;border-radius:6px;">'
-            f"📋 Session files: {files_list}</div>"
+            '<div class="session-files"><span>Загружено в этой сессии:</span>'
+            f'<ul class="chip-list">{files}</ul></div>'
         )
 
 
@@ -128,7 +104,7 @@ def _save_uploaded_files(uploaded_files: list, workspace: ChatWorkspace) -> None
 
     if saved:
         st.session_state.uploaded_files = sorted(set(st.session_state.uploaded_files + saved))
-        st.success("Loaded: " + ", ".join(saved))
+        st.success("Загружено: " + ", ".join(saved), icon=":material/upload_file:")
     for error in errors:
         st.error(error)
 
@@ -136,91 +112,78 @@ def _save_uploaded_files(uploaded_files: list, workspace: ChatWorkspace) -> None
 # ─────────────────────────── Document Cards ───────────────────────
 
 
-def _render_document_cards(workspace: ChatWorkspace) -> None:
-    st.markdown("#### Documents")
+def _render_document_cards(workspace: ChatWorkspace, documents: list[Path]) -> None:
+    render_section_title("Файлы", plural_ru(len(documents), "документ", "документа", "документов"))
 
-    documents = workspace.documents.list_files()
     if not documents:
-        _render_empty_state()
+        render_html(
+            empty_state_html(
+                "Документов пока нет",
+                "Перетащите файлы в зону загрузки выше, затем постройте индекс.",
+            )
+        )
         return
 
-    for document_path in sorted(documents):
-        _render_document_card(document_path, workspace)
+    for position, document_path in enumerate(documents):
+        _render_document_card(position, document_path, workspace)
 
 
-def _render_empty_state() -> None:
-    render_html(
-        '<div style="text-align:center;padding:3rem 2rem;color:#5a6078;">'
-        '<div style="font-size:3rem;margin-bottom:1rem;">📂</div>'
-        '<div style="font-size:1.1rem;font-weight:500;margin-bottom:0.5rem;">'
-        "No documents uploaded</div>"
-        '<div style="font-size:0.9rem;color:#8b92a8;">'
-        "Upload PDF, DOCX, TXT or MD files to start building your knowledge base."
-        "</div>"
-        "</div>"
-    )
-
-
-def _render_document_card(document_path: Path, workspace: ChatWorkspace) -> None:
+def _render_document_card(position: int, document_path: Path, workspace: ChatWorkspace) -> None:
     relative_path = workspace.documents.relative_path(document_path)
+    name = Path(relative_path).name
     extension = document_path.suffix.lower()
 
-    with st.columns(1)[0]:
+    with st.container(
+        key=f"doc-card-{position}", horizontal=True, vertical_alignment="center", gap="small"
+    ):
         render_html(
-            '<div style="background:#1a1f2e;border:1px solid #2a3040;border-radius:10px;'
-            'padding:16px;margin-bottom:10px;transition:all 0.2s;">'
-            '<div style="display:flex;align-items:flex-start;justify-content:space-between;'
-            'gap:12px;">'
-            '<div style="flex:1;">'
-            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
-            f'<span style="font-size:1.5rem;">{file_icon(extension)}</span>'
-            "<div>"
-            '<div style="font-weight:600;font-size:0.95rem;color:#e0e0e0;">'
-            f"{html.escape(Path(relative_path).name)}</div>"
-            f'<div style="font-size:0.8rem;color:#8b92a8;">{file_type(extension)}</div>'
-            "</div>"
-            "</div>"
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:0.8rem;">'
-            '<div style="color:#8b92a8;"><b>Size:</b> '
+            '<div class="doc-card">'
+            f'<span class="doc-type" aria-hidden="true">'
+            f"{html.escape(extension.lstrip('.')[:4]) or 'file'}</span>"
+            '<div class="doc-body">'
+            f'<div class="doc-name">{html.escape(name)}</div>'
+            f'<div class="doc-meta">{file_type(extension)} · '
             f"{human_size(document_path.stat().st_size)}</div>"
-            f'<div style="color:#8b92a8;"><b>Chat:</b> {html.escape(workspace.chat.title)}</div>'
-            "</div>"
-            "</div>"
-            "</div>"
+            "</div></div>"
         )
+        if st.button(
+            ":material/refresh:",
+            key=f"reindex_{relative_path}",
+            type="tertiary",
+            help="Переиндексировать: индекс обновляется для всех документов сразу",
+        ):
+            st.info("Нажмите «Индексировать», чтобы обновить индекс.")
+        if st.button(
+            ":material/delete:",
+            key=f"delete_{relative_path}",
+            type="tertiary",
+            help=f"Удалить {name}",
+        ):
+            _confirm_delete_document(document_path, workspace)
 
-        col_delete, col_reindex = st.columns(2)
 
-        with col_delete:
-            if st.button(
-                "🗑 Delete",
-                key=f"delete_{relative_path}",
-                use_container_width=True,
-                type="secondary",
-            ):
-                removed_chunks = _delete_document(document_path, workspace)
-                if removed_chunks is not None:
-                    bump_uploader_version(workspace.chat.id)
-                    index_note = (
-                        "Its vectors were removed from the index."
-                        if removed_chunks
-                        else "No indexed chunks were found for it; "
-                        "run 'Rebuild Index' if it was indexed before."
-                    )
-                    st.session_state.notice = f"Document deleted: {relative_path}. {index_note}"
-                    st.rerun()
-
-        with col_reindex:
-            if st.button(
-                "🔄 Reindex",
-                key=f"reindex_{relative_path}",
-                use_container_width=True,
-                type="secondary",
-            ):
-                st.session_state.notice = (
-                    "Please use 'Index Documents' button to reindex all documents."
+@st.dialog("Удалить документ?")
+def _confirm_delete_document(document_path: Path, workspace: ChatWorkspace) -> None:
+    relative_path = workspace.documents.relative_path(document_path)
+    render_html(
+        f"<p>Файл <b>{html.escape(Path(relative_path).name)}</b> будет удалён, "
+        "а его фрагменты — убраны из индекса этого чата.</p>"
+    )
+    with st.container(horizontal=True, horizontal_alignment="right"):
+        if st.button("Отмена", key="cancel_delete_document"):
+            st.rerun()
+        if st.button("Удалить документ", key="confirm_delete_document", type="primary"):
+            removed_chunks = _delete_document(document_path, workspace)
+            if removed_chunks is not None:
+                bump_uploader_version(workspace.chat.id)
+                index_note = (
+                    "Его фрагменты удалены из индекса."
+                    if removed_chunks
+                    else "Фрагментов в индексе не найдено; "
+                    "если он был проиндексирован раньше, нажмите «Пересобрать»."
                 )
-                st.info("Run 'Index Documents' to rebuild the index.")
+                st.session_state.notice = f"Документ удалён: {relative_path}. {index_note}"
+                st.rerun()
 
 
 def _delete_document(path: Path, workspace: ChatWorkspace) -> int | None:
@@ -249,62 +212,91 @@ def _delete_document(path: Path, workspace: ChatWorkspace) -> int | None:
 # ─────────────────────────── Index Management ──────────────────────
 
 
-def _render_index_management(settings: Settings, workspace: ChatWorkspace) -> None:
-    st.markdown("#### ⚙️ Index Management")
+def _render_index_management(
+    settings: Settings, workspace: ChatWorkspace, document_count: int
+) -> None:
+    render_section_title("Индекс", "FAISS · обновляется по кнопке")
 
-    col_status, col_docs = st.columns(2)
-    col_status.metric("Status", "Ready ✓" if workspace.index.exists() else "Not created")
-    col_docs.metric("Documents loaded", str(len(workspace.documents.list_files())))
+    with st.container(horizontal=True, gap="small", key="index-actions"):
+        index_clicked = st.button(
+            "Индексировать",
+            type="primary",
+            icon=":material/build:",
+            help="Добавить в индекс новые и изменённые документы",
+        )
+        rebuild_clicked = st.button(
+            "Пересобрать",
+            icon=":material/autorenew:",
+            help="Построить индекс заново из всех документов",
+        )
+        if st.button("Очистить индекс", icon=":material/delete_sweep:"):
+            _confirm_clear_index(workspace)
+        if st.button("Удалить все документы", icon=":material/folder_delete:"):
+            _confirm_clear_documents(workspace, document_count)
 
-    col_index, col_clear, col_rebuild = st.columns(3)
+    if index_clicked:
+        _run_indexing(
+            settings,
+            workspace,
+            incremental=True,
+            status="Индексация…",
+            success="Индекс обновлён",
+            failure="Ошибка индексации",
+        )
+    if rebuild_clicked:
+        _run_indexing(
+            settings,
+            workspace,
+            incremental=False,
+            status="Пересборка индекса…",
+            success="Индекс пересобран",
+            failure="Ошибка пересборки",
+        )
 
-    with col_index:
-        if st.button("🔨 Index Documents", type="primary", use_container_width=True):
-            _run_indexing(
-                settings,
-                workspace,
-                incremental=True,
-                status="Initializing indexing...",
-                success="Index updated",
-                failure="Indexing error",
-            )
 
-    with col_clear:
-        if st.button("🗑 Clear Index", use_container_width=True):
+@st.dialog("Очистить индекс?")
+def _confirm_clear_index(workspace: ChatWorkspace) -> None:
+    render_html(
+        "<p>Файлы индекса будут удалены, документы останутся. "
+        "Чтобы снова задавать вопросы, индекс нужно будет построить заново.</p>"
+    )
+    with st.container(horizontal=True, horizontal_alignment="right"):
+        if st.button("Отмена", key="cancel_clear_index"):
+            st.rerun()
+        if st.button("Очистить индекс", key="confirm_clear_index", type="primary"):
             try:
                 removed = workspace.index.clear()
                 reset_index_dependent_state()
-                st.success(f"Index cleared. Files removed: {removed}")
+                st.session_state.notice = f"Индекс очищен. Удалено файлов: {removed}"
                 st.rerun()
             except Exception as exc:
-                st.error(f"Error clearing index: {exc}")
+                st.error(f"Ошибка очистки индекса: {exc}")
 
-    with col_rebuild:
-        if st.button("🔄 Rebuild Index", use_container_width=True):
-            _run_indexing(
-                settings,
-                workspace,
-                incremental=False,
-                status="Rebuilding index...",
-                success="Index rebuilt",
-                failure="Rebuild error",
-            )
 
-    st.markdown("**Clear all documents**")
-    clear_index = st.checkbox("Also delete FAISS index", value=True)
-    if st.button("🗑 Clear all uploaded documents", use_container_width=True):
-        try:
-            removed_documents = workspace.documents.clear()
-            removed_index_files = workspace.index.clear() if clear_index else 0
-            reset_index_dependent_state()
-            st.session_state.uploaded_files = []
-            bump_uploader_version(workspace.chat.id)
-            st.session_state.notice = (
-                f"Documents removed: {removed_documents}. Index files: {removed_index_files}."
-            )
+@st.dialog("Удалить все документы?")
+def _confirm_clear_documents(workspace: ChatWorkspace, count: int) -> None:
+    render_html(
+        f"<p>Из чата будет удалено: {plural_ru(count, 'документ', 'документа', 'документов')}. "
+        "Это действие нельзя отменить.</p>"
+    )
+    clear_index = st.checkbox("Также удалить FAISS-индекс", value=True)
+    with st.container(horizontal=True, horizontal_alignment="right"):
+        if st.button("Отмена", key="cancel_clear_documents"):
             st.rerun()
-        except Exception as exc:
-            st.error(f"Clear error: {exc}")
+        if st.button("Удалить всё", key="confirm_clear_documents", type="primary"):
+            try:
+                removed_documents = workspace.documents.clear()
+                removed_index_files = workspace.index.clear() if clear_index else 0
+                reset_index_dependent_state()
+                st.session_state.uploaded_files = []
+                bump_uploader_version(workspace.chat.id)
+                st.session_state.notice = (
+                    f"Удалено документов: {removed_documents}. "
+                    f"Файлов индекса: {removed_index_files}."
+                )
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Ошибка удаления: {exc}")
 
 
 def _run_indexing(
@@ -316,31 +308,35 @@ def _run_indexing(
     success: str,
     failure: str,
 ) -> None:
-    """Run ingestion with a live progress bar.
+    """Run ingestion with a live progress bar inside a status panel.
 
     A rebuild builds the new index in memory and only replaces the saved one on
     success, so a failed rebuild keeps the previous index usable.
     """
-    try:
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+    with st.status(status, expanded=True) as status_panel:
+        try:
+            progress_bar = st.progress(0, text=status)
 
-        def update_progress(stage: str, current: int, total: int) -> None:
-            if total > 0:
-                progress_bar.progress(current / total, text=f"{stage}: {current}/{total}")
-            else:
-                status_text.text(stage)
+            def update_progress(stage: str, current: int, total: int) -> None:
+                if total > 0:
+                    progress_bar.progress(current / total, text=f"{stage}: {current}/{total}")
+                else:
+                    status_panel.update(label=stage)
 
-        status_text.text(status)
-        count = ingest_to_faiss(
-            input_dir=workspace.documents_dir,
-            index_dir=workspace.index_dir,
-            settings=settings,
-            incremental=incremental,
-            progress_callback=update_progress,
-        )
-        progress_bar.progress(1.0, text="Complete!")
-        invalidate_chat_session()
-        st.success(f"{success}. Chunks: {count}")
-    except Exception as exc:
-        st.error(f"{failure}: {exc}")
+            count = ingest_to_faiss(
+                input_dir=workspace.documents_dir,
+                index_dir=workspace.index_dir,
+                settings=settings,
+                incremental=incremental,
+                progress_callback=update_progress,
+            )
+            progress_bar.progress(1.0, text="Готово")
+            invalidate_chat_session()
+            status_panel.update(label=success, state="complete")
+        except Exception as exc:
+            status_panel.update(label=failure, state="error")
+            st.error(f"{failure}: {exc}")
+            return
+    # Rerun so the dashboard above shows the new index; the notice carries the result.
+    st.session_state.notice = f"{success}. Фрагментов: {count}"
+    st.rerun()

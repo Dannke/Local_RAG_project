@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 168 32" width="168" height="32" role="img" aria-label="Local RAG">
+  <g fill="none" stroke="#E2A54B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" transform="translate(2 4)">
+    <path d="M12 6v17"/>
+    <path d="M2 20.5V3.5A1.5 1.5 0 0 1 3.5 2H8a4 4 0 0 1 4 4 4 4 0 0 1 4-4h4.5A1.5 1.5 0 0 1 22 3.5v17a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3H3a1 1 0 0 1-1-1z"/>
+  </g>
+  <text x="34" y="22" fill="#ECE8E1" font-family="'Sitka Heading','Sitka Text',Charter,Cambria,Georgia,serif" font-size="19" font-weight="600" letter-spacing="0.2">Local RAG</text>
+</svg>
