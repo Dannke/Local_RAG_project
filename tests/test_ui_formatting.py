@@ -57,7 +57,8 @@ class HumanSizeTests(unittest.TestCase):
 
 
 class RelevanceTests(unittest.TestCase):
-    def test_tiers_switch_at_thresholds(self) -> None:
+    def test_tiers_switch_at_thresholds_within_the_answer_range(self) -> None:
+        # With the range 0..1 the normalized score equals the raw score.
         cases = [
             (0.95, (95, *EXCELLENT)),
             (0.8, (80, *EXCELLENT)),
@@ -70,16 +71,19 @@ class RelevanceTests(unittest.TestCase):
         ]
         for score, expected in cases:
             with self.subTest(score=score):
-                self.assertEqual(relevance_for(score), expected)
+                self.assertEqual(relevance_for(score, 0.0, 1.0), expected)
 
-    def test_out_of_range_scores_are_clamped(self) -> None:
-        self.assertEqual(relevance_for(1.7), (100, *EXCELLENT))
-        self.assertEqual(relevance_for(-0.3), (0, *WEAK))
-        self.assertEqual(relevance_for(-5), (0, *WEAK))
+    def test_raw_logits_are_normalized_relative_to_the_answer(self) -> None:
+        self.assertEqual(relevance_for(2.0, -8.0, 2.0), (100, *EXCELLENT))
+        self.assertEqual(relevance_for(-3.0, -8.0, 2.0), (50, *MODERATE))
+        self.assertEqual(relevance_for(-8.0, -8.0, 2.0), (0, *WEAK))
 
-    def test_integer_scores_are_accepted(self) -> None:
-        self.assertEqual(relevance_for(1), (100, *EXCELLENT))
-        self.assertEqual(relevance_for(0), (0, *WEAK))
+    def test_sigmoid_is_used_without_a_usable_range(self) -> None:
+        self.assertEqual(relevance_for(0), (50, *MODERATE))
+        self.assertEqual(relevance_for(10.0), (100, *EXCELLENT))
+        self.assertEqual(relevance_for(-10.0), (0, *WEAK))
+        # A single source (min == max) falls back to the sigmoid too.
+        self.assertEqual(relevance_for(0.0, 0.0, 0.0), (50, *MODERATE))
 
     def test_unusable_scores_return_none(self) -> None:
         for score in (None, float("nan"), float("inf"), float("-inf"), "abc", object(), [0.5]):

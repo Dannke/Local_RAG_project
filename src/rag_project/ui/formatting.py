@@ -46,12 +46,21 @@ def human_size(size_bytes: int) -> str:
     return f"{size_bytes / (1024 * 1024):.1f} MB"
 
 
-def relevance_for(score: object) -> tuple[int, str, str] | None:
+def relevance_for(
+    score: object,
+    score_min: float | None = None,
+    score_max: float | None = None,
+) -> tuple[int, str, str] | None:
     """Map a raw score to a (percent, label, color) triple for display only.
+
+    The cross-encoder returns raw logits (roughly -10…10), well ranked but badly
+    calibrated, so scores are normalized relative to the other sources of the
+    same answer (best = 100%, worst = 0%) when ``score_min < score_max``, and
+    squashed with a sigmoid otherwise.
 
     Returns None when the score is not a usable number (None, NaN, non-numeric),
     so the relevance section can be hidden entirely. The backend score itself
-    is never modified — only displayed and clamped to a 0–100% bar.
+    is never modified.
     """
     try:
         numeric = float(score)  # type: ignore[arg-type]
@@ -59,9 +68,13 @@ def relevance_for(score: object) -> tuple[int, str, str] | None:
         return None
     if math.isnan(numeric) or math.isinf(numeric):
         return None
-    percent = max(0, min(int(round(numeric * 100)), 100))
+    if score_min is not None and score_max is not None and score_max > score_min:
+        probability = (numeric - score_min) / (score_max - score_min)
+    else:
+        probability = 1.0 / (1.0 + math.exp(-numeric))
+    percent = max(0, min(int(round(probability * 100)), 100))
     for threshold, label, color in _RELEVANCE_TIERS:
-        if numeric >= threshold:
+        if probability >= threshold:
             return percent, label, color
     _, label, color = _RELEVANCE_TIERS[-1]
     return percent, label, color

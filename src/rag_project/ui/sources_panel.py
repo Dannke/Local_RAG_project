@@ -26,6 +26,9 @@ from rag_project.ui.theme import render_html
 
 def render_sources_panel(results: Sequence[SearchResult]) -> None:
     citations = build_citations(results)
+    # Relevance is shown relative to the other sources of the same answer.
+    scores = [citation.score for citation in citations if citation.score is not None]
+    score_range = (min(scores), max(scores)) if scores else (None, None)
 
     _render_header(len(citations))
 
@@ -34,7 +37,7 @@ def render_sources_panel(results: Sequence[SearchResult]) -> None:
         return
 
     for index, citation in enumerate(citations, start=1):
-        _render_citation_card(index, citation)
+        _render_citation_card(index, citation, score_range)
 
 
 def _render_header(total: int) -> None:
@@ -58,7 +61,11 @@ def _render_empty() -> None:
     )
 
 
-def _render_citation_card(index: int, citation: Citation) -> None:
+def _render_citation_card(
+    index: int,
+    citation: Citation,
+    score_range: tuple[float | None, float | None],
+) -> None:
     """A single citation card.
 
     Layout: source number + filename, file type / page / chunk chips, an
@@ -80,7 +87,7 @@ def _render_citation_card(index: int, citation: Citation) -> None:
         f"{html.escape(filename)}</span>"
         "</div>"
         f'<div class="citation-meta-row">{"".join(chips)}</div>'
-        f"{_relevance_html(citation.score)}"
+        f"{_relevance_html(citation.score, score_range)}"
         f'<div class="citation-preview">{html.escape(citation_preview(citation.text))}</div>'
         "</div>"
     )
@@ -89,9 +96,9 @@ def _render_citation_card(index: int, citation: Citation) -> None:
         st.write(citation.text)
 
 
-def _relevance_html(score: float) -> str:
+def _relevance_html(score: float, score_range: tuple[float | None, float | None]) -> str:
     """Relevance bar, or an empty string when the score is unusable."""
-    relevance = relevance_for(score)
+    relevance = relevance_for(score, *score_range)
     if relevance is None:
         return ""
     percent, label, color = relevance

@@ -22,6 +22,7 @@ RUN pip install --no-deps -e .
 
 # Copy app files
 COPY app.py .
+COPY scripts/ ./scripts/
 COPY assets/ ./assets/
 COPY .streamlit/ ./.streamlit/
 COPY data/ ./data/
@@ -35,7 +36,7 @@ EXPOSE 8501
 
 # Non-root user for safety
 RUN useradd --create-home --uid 1000 raguser && \
-    chown -R raguser:raguser /app /data
+    mkdir -p /data/logs /data/.cache/huggingface && chown -R raguser:raguser /app /data
 USER raguser
 
 # Streamlit entrypoint, headless, no telemetry
